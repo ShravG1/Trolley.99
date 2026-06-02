@@ -39,10 +39,47 @@ export async function signInWithMagicLink(email: string): Promise<void> {
   });
 }
 
-/** Join a group via the RPC — never raw table access (§5.2). */
-export async function joinGroup(code: string): Promise<string | null> {
+export async function signOut(): Promise<void> {
+  await supabase?.auth.signOut();
+}
+
+/** Create a group + first membership + empty active trip in one RPC (§5.2). */
+export async function createGroup(name: string, displayName: string): Promise<string | null> {
   if (!supabase) return null;
-  const { data, error } = await supabase.rpc('join_group', { p_code: code });
+  const { data, error } = await supabase.rpc('create_group', {
+    p_name: name,
+    p_display_name: displayName,
+  });
   if (error) throw error;
   return data as string;
+}
+
+/** Join a group via the RPC — never raw table access (§5.2). */
+export async function joinGroup(code: string, displayName: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('join_group', {
+    p_code: code,
+    p_display_name: displayName,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Mint a fresh invite (code + link token) for a group (§5.2). */
+export async function createInvite(
+  groupId: string
+): Promise<{ code: string; token: string } | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('create_invite', { p_group_id: groupId });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? { code: row.code as string, token: row.token as string } : null;
+}
+
+/** The groups the signed-in user belongs to (V1 UI assumes one, §12). */
+export async function listMyGroups(): Promise<Array<{ group_id: string; display_name: string }>> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('group_members').select('group_id, display_name');
+  if (error) throw error;
+  return data ?? [];
 }

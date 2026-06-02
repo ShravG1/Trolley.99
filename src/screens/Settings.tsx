@@ -2,19 +2,36 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { AISLES } from '@/lib/aisles';
+import { isSupabaseConfigured, createInvite } from '@/lib/supabase';
 
 // Settings (§2.1 invite, §2.8 recurring, §2.9 reporting gate, §11 privacy).
 export function Settings() {
   const members = useStore((s) => s.members);
   const items = useStore((s) => s.items);
+  const groupId = useStore((s) => s.trip.group_id);
   const deleted = items.filter((i) => i.status === 'deleted');
 
   const [copied, setCopied] = useState(false);
   const [reportingOn, setReportingOn] = useState(false); // off by default (§2.9, §11.3)
+  const [code, setCode] = useState<string | null>(isSupabaseConfigured() ? null : 'TRLY-7K3M');
+  const [minting, setMinting] = useState(false);
 
-  const inviteLink = `${window.location.origin}/join/TRLY-7K3M`;
+  const inviteLink = code ? `${window.location.origin}/join/${code}` : '';
+
+  async function mint() {
+    setMinting(true);
+    try {
+      const inv = await createInvite(groupId);
+      if (inv) setCode(inv.code);
+    } catch {
+      /* ignore — surfaced by the empty link */
+    } finally {
+      setMinting(false);
+    }
+  }
 
   async function copy() {
+    if (!inviteLink) return;
     try {
       await navigator.clipboard.writeText(inviteLink);
       setCopied(true);
@@ -36,12 +53,22 @@ export function Settings() {
       {/* Invite */}
       <Section title="Add people">
         <p className="mb-3 text-body text-ink-soft">Send this to whoever’s doing the shopping with you.</p>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 truncate rounded-xs bg-surface-2 px-3 py-2 text-meta text-ink">{inviteLink}</code>
-          <button onClick={copy} className="min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
-            {copied ? 'Copied' : 'Copy link'}
+        {inviteLink ? (
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-xs bg-surface-2 px-3 py-2 text-meta text-ink">{inviteLink}</code>
+            <button onClick={copy} className="min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={mint}
+            disabled={minting}
+            className="min-h-11 rounded-pill bg-brand px-5 text-meta font-semibold text-on-brand disabled:opacity-40"
+          >
+            {minting ? 'Creating…' : 'Create invite link'}
           </button>
-        </div>
+        )}
         <p className="mt-2 text-caption text-ink-faint">Links expire after 7 days and can be revoked.</p>
       </Section>
 

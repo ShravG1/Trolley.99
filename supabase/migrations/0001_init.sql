@@ -270,6 +270,33 @@ begin
 end;
 $$;
 
+-- Mint a revocable, expiring invite for a group (§5.2). Members only. The short
+-- code uses an unambiguous alphabet (no 0/O/1/l); the link carries a longer token.
+create or replace function create_invite(p_group_id uuid)
+returns table(code text, token text, expires_at timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_code text;
+  v_token text;
+  v_expires timestamptz := now() + interval '7 days';
+  v_alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+begin
+  if not is_member(p_group_id) then
+    raise exception 'not_a_member';
+  end if;
+  select string_agg(substr(v_alphabet, 1 + floor(random() * length(v_alphabet))::int, 1), '')
+    into v_code
+    from generate_series(1, 8);
+  v_token := encode(gen_random_bytes(24), 'hex');
+  insert into invites (group_id, code, token, expires_at, created_by)
+    values (p_group_id, v_code, v_token, v_expires, auth.uid());
+  return query select v_code, v_token, v_expires;
+end;
+$$;
+
 -- Atomic single-shopper claim (§7.1) — first-writer-wins.
 create or replace function start_shopping(p_trip_id uuid, p_minutes int)
 returns uuid

@@ -28,21 +28,33 @@ written and ready to deploy. "To wire" = the contained next step.
 - **Tests (§14):** unit suite (dedupe, rollover, shopper-claim race, window rules,
   grouping, categoriser) + the critical RLS pgTAP suite. CI wired.
 
+## Wired (activates when Supabase env keys are present)
+
+- **Auth + group gating (§2.1):** magic-link sign-in, `create_group` / `join_group`
+  flows (`GroupSetup`), invite minting (`create_invite`) + `/join/<code>` links that
+  survive the sign-in redirect. App shell gates loading → signed-out → needs-group →
+  ready.
+- **Realtime data layer (§6.3–6.4):** `src/sync/useSupabaseSync.ts` bootstraps the
+  active trip + items + members, subscribes group-scoped `items`/`trips` channels,
+  and installs a `RemoteWriter` the store calls after each optimistic update. Server
+  rows dedupe into the store by client id; trips changes trigger a reload (handles
+  the post-completion new-trip handoff); reconnect re-fetches. Completion defers to
+  the `complete_trip` RPC so trip ids never diverge. Push fan-out (urgent named /
+  normal debounced count) fires via `send-push`. Demo mode is untouched (`remote`
+  stays null).
+
 ## To wire (next, contained changes)
 
-1. **Supabase Realtime in the store (§6.3–6.4):** replace the seed load + each
-   `useStore` mutation body with `supabase.from(...)` / `.rpc(...)` calls and a
-   group-scoped channel feeding reconciled rows back. Dedupe on the client UUID is
-   already designed in. Re-fetch on reconnect.
-2. **Generated types (§6.1):** `supabase gen types` → `src/types/database.ts`, swap
+1. **Generated types (§6.1):** `supabase gen types` → `src/types/database.ts`, swap
    imports off `models.ts`.
-3. **Push UX hooks (§2.10):** call `enablePush()` contextually after the first
+2. **Push UX hooks (§2.10):** call `enablePush()` contextually after the first
    urgent mark; on iOS show the "Add to Home Screen" hint when `canPrompt()` is
    false. Add a custom SW `push`/`notificationclick` handler (switch
    `vite-plugin-pwa` to `injectManifest`).
-4. **Self-host + subset fonts (§10)** — see `docs/PERFORMANCE.md`.
-5. **CSP + security headers at the edge (§5.7)** — Vercel `vercel.json`.
-6. **Wire error tracking (Sentry) in `ErrorBoundary` + push send/fail metrics (§9).**
+3. **Self-host + subset fonts (§10)** — see `docs/PERFORMANCE.md`.
+4. **Wire error tracking (Sentry) in `ErrorBoundary` + push send/fail metrics (§9).**
+5. **Recurring scheduler cron** — schedule the `recurring` Edge Function (e.g.
+   `supabase functions deploy recurring` + a cron trigger).
 
 ## Explicitly out of scope for V1 (§0)
 

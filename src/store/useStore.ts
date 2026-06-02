@@ -3,6 +3,7 @@ import type { Item, ItemStatus, Trip, GroupMember } from '@/types/models';
 import type { AisleKey } from '@/lib/aisles';
 import { guessAisle, normaliseName } from '@/lib/categorise';
 import { seedItems, seedMembers, seedTrip, CURRENT_USER } from './seed';
+import type { RemoteWriter } from './remote';
 
 // -----------------------------------------------------------------------------
 // Client state + optimistic layer (§6.3).
@@ -31,6 +32,14 @@ interface StoreState {
   items: Item[];
   toasts: Toast[];
   multiAddCount: number;
+
+  /** Installed by the Supabase sync layer; null in demo mode (§6.3). */
+  remote: RemoteWriter | null;
+  setRemote: (remote: RemoteWriter | null) => void;
+  /** Replace the whole local view from a server fetch (bootstrap / reload). */
+  loadSnapshot: (snap: { userId: string; members: GroupMember[]; trip: Trip; items: Item[] }) => void;
+  /** Reconcile a single item arriving over Realtime, deduped by id (§6.3). */
+  applyServerItem: (item: Item) => void;
 
   // derived
   mode: () => Mode;
@@ -74,6 +83,25 @@ export const useStore = create<StoreState>((set, get) => ({
   items: seedItems,
   toasts: [],
   multiAddCount: 0,
+  remote: null,
+
+  setRemote(remote) {
+    set({ remote });
+  },
+
+  loadSnapshot({ userId, members, trip, items }) {
+    set({ userId, members, trip, items });
+  },
+
+  applyServerItem(item) {
+    set((s) => {
+      const idx = s.items.findIndex((i) => i.id === item.id);
+      if (idx === -1) return { items: [...s.items, item] };
+      const next = s.items.slice();
+      next[idx] = item; // server row wins (it's the truth)
+      return { items: next };
+    });
+  },
 
   mode() {
     const { trip, userId } = get();
@@ -98,13 +126,14 @@ export const useStore = create<StoreState>((set, get) => ({
       (i) => i.status !== 'deleted' && normaliseName(i.name) === norm
     );
     if (existing) {
+      const nextQty = existing.quantity + quantity;
+      const nextPriority = urgent ? 'urgent' : existing.priority;
       set({
         items: items.map((i) =>
-          i.id === existing.id
-            ? { ...i, quantity: i.quantity + quantity, priority: urgent ? 'urgent' : i.priority }
-            : i
+          i.id === existing.id ? { ...i, quantity: nextQty, priority: nextPriority } : i
         ),
       });
+      get().remote?.patchItem(existing.id, { quantity: nextQty, priority: nextPriority });
       return;
     }
 
@@ -128,71 +157,74 @@ export const useStore = create<StoreState>((set, get) => ({
       acted_at: null,
     };
     set((s) => ({ items: [...s.items, item], multiAddCount: s.multiAddCount + 1 }));
-    // SERVER: push fan-out (urgent → named; normal → debounced count; never self — §2.10).
+    // Remote insert; the writer fans out push (urgent → named; normal → debounced
+    // count; never self — §2.10) after the row lands.
+    get().remote?.insertItem(item);
   },
 
   setQuantity(id, quantity) {
-    set((s) => ({
-      items: s.items.map((i) => (i.id === id ? { ...i, quantity: Math.max(1, quantity) } : i)),
-    }));
+    const q = Math.max(1, quantity);
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, quantity: q } : i)) }));
+    get().remote?.patchItem(id, { quantity: q });
   },
 
   setCategory(id, category) {
     set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, category } : i)) }));
+    get().remote?.patchItem(id, { category });
   },
 
   toggleUrgent(id) {
-    set((s) => ({
-      items: s.items.map((i) =>
-        i.id === id ? { ...i, priority: i.priority === 'urgent' ? 'normal' : 'urgent' } : i
-      ),
-    }));
+    const current = get().items.find((i) => i.id === id);
+    if (!current) return;
+    const priority = current.priority === 'urgent' ? 'normal' : 'urgent';
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, priority } : i)) }));
+    get().remote?.patchItem(id, { priority });
   },
 
   markBought(id) {
     const { userId, members } = get();
     const me = members.find((m) => m.user_id === userId);
     // SERVER: last-write-wins on status, stamping acted_by/acted_at (§7.3).
-    set((s) => ({
-      items: s.items.map((i) =>
-        i.id === id
-          ? { ...i, status: 'bought' as ItemStatus, acted_by: userId, acted_by_name: me?.display_name ?? 'You', acted_at: now() }
-          : i
-      ),
-    }));
+    const patch: Partial<Item> = {
+      status: 'bought',
+      acted_by: userId,
+      acted_by_name: me?.display_name ?? 'You',
+      acted_at: now(),
+    };
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
+    get().remote?.patchItem(id, patch);
   },
 
   substitute(id, newName, note) {
-    const { userId, members } = get();
+    const { userId, members, items } = get();
     const me = members.find((m) => m.user_id === userId);
-    set((s) => ({
-      items: s.items.map((i) =>
-        i.id === id
-          ? {
-              ...i,
-              name: newName.trim() || i.name,
-              status: 'substituted' as ItemStatus,
-              substitution_note: note.trim() || `instead of ${i.name}`,
-              category: guessAisle(newName) === 'other' ? i.category : guessAisle(newName),
-              acted_by: userId,
-              acted_by_name: me?.display_name ?? 'You',
-              acted_at: now(),
-            }
-          : i
-      ),
-    }));
+    const target = items.find((i) => i.id === id);
+    if (!target) return;
+    const guessed = guessAisle(newName);
+    const patch: Partial<Item> = {
+      name: newName.trim() || target.name,
+      status: 'substituted',
+      substitution_note: note.trim() || `instead of ${target.name}`,
+      category: guessed === 'other' ? target.category : guessed,
+      acted_by: userId,
+      acted_by_name: me?.display_name ?? 'You',
+      acted_at: now(),
+    };
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
+    get().remote?.patchItem(id, patch);
   },
 
   markNotFound(id) {
     const { userId, members } = get();
     const me = members.find((m) => m.user_id === userId);
-    set((s) => ({
-      items: s.items.map((i) =>
-        i.id === id
-          ? { ...i, status: 'not_found' as ItemStatus, acted_by: userId, acted_by_name: me?.display_name ?? 'You', acted_at: now() }
-          : i
-      ),
-    }));
+    const patch: Partial<Item> = {
+      status: 'not_found',
+      acted_by: userId,
+      acted_by_name: me?.display_name ?? 'You',
+      acted_at: now(),
+    };
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
+    get().remote?.patchItem(id, patch);
   },
 
   deleteItem(id) {
@@ -200,22 +232,21 @@ export const useStore = create<StoreState>((set, get) => ({
     const item = items.find((i) => i.id === id);
     if (!item) return;
     const me = members.find((m) => m.user_id === userId);
-    set({
-      items: items.map((i) =>
-        i.id === id
-          ? { ...i, status: 'deleted' as ItemStatus, acted_by: userId, acted_by_name: me?.display_name ?? 'You', acted_at: now() }
-          : i
-      ),
-    });
+    const patch: Partial<Item> = {
+      status: 'deleted',
+      acted_by: userId,
+      acted_by_name: me?.display_name ?? 'You',
+      acted_at: now(),
+    };
+    set({ items: items.map((i) => (i.id === id ? { ...i, ...patch } : i)) });
+    get().remote?.patchItem(id, patch);
     get().pushToast(`Binned ${item.name}. Undo?`, () => get().restoreItem(id));
   },
 
   restoreItem(id) {
-    set((s) => ({
-      items: s.items.map((i) =>
-        i.id === id ? { ...i, status: 'pending' as ItemStatus, acted_by: null, acted_by_name: null, acted_at: null } : i
-      ),
-    }));
+    const patch: Partial<Item> = { status: 'pending', acted_by: null, acted_by_name: null, acted_at: null };
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
+    get().remote?.patchItem(id, patch);
   },
 
   startShopping(windowMinutes) {
@@ -238,6 +269,9 @@ export const useStore = create<StoreState>((set, get) => ({
         started_at: now(),
       },
     });
+    // Remote claim is authoritative; if it loses the race the writer resyncs the
+    // trip back to active and toasts "someone's already shopping" (§7.1).
+    get().remote?.startShopping(trip.id, windowMinutes);
     return true;
   },
 
@@ -247,13 +281,23 @@ export const useStore = create<StoreState>((set, get) => ({
     set({
       trip: { ...trip, status: 'active', shopper_id: null, shopper_name: null, lastminute_until: null, started_at: null },
     });
+    get().remote?.cancelShopping(trip.id);
   },
 
   finishTrip() {
-    const { trip, items } = get();
+    const { trip, items, remote } = get();
     const bought = items.filter((i) => i.status === 'bought' || i.status === 'substituted').length;
     const notFound = items.filter((i) => i.status === 'not_found');
     const rolled = notFound.length;
+
+    // In Supabase mode the server owns the completion transaction (§7.4): it
+    // creates the fresh active trip and rolls items with real ids, then the sync
+    // layer reloads. We don't build a local trip here or its id would diverge.
+    if (remote) {
+      remote.completeTrip(trip.id);
+      get().pushToast(`Trip done. ${bought} bought, ${rolled} rolled over.`);
+      return;
+    }
 
     // SERVER: inside the completion transaction guarded by `where status='shopping'`
     // (§7.4) — complete this trip, create a fresh active trip, roll over not-found
