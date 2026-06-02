@@ -1,0 +1,39 @@
+name: CI
+
+# typecheck → unit → RLS tests → build, before any deploy (§14, §15).
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  rls:
+    # The single most important suite — prove cross-group isolation (§14).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start local Supabase
+        run: supabase start
+      - name: Apply migrations
+        run: supabase db reset --no-seed
+      - name: Run RLS / pgTAP tests
+        run: supabase test db

@@ -1,0 +1,177 @@
+import { useRef, useState } from 'react';
+import type { Item } from '@/types/models';
+import { AISLES, aisleColor, aisleTint } from '@/lib/aisles';
+import {
+  PendingIcon,
+  UrgentIcon,
+  BoughtIcon,
+  SubIcon,
+  NotFoundIcon,
+  BinIcon,
+} from './icons';
+
+interface Props {
+  item: Item;
+  density: 'list' | 'shopping';
+  readOnly?: boolean;
+  onBought: (id: string) => void;
+  onEdit: (item: Item) => void;
+  onMenu: (item: Item) => void;
+  onDelete: (id: string) => void;
+}
+
+const SWIPE_THRESHOLD = 72;
+
+// ItemRow (§2.3) — all states, both densities, swipe actions, aisle tab.
+// State is icon + text + position + colour, never colour alone (§1.8).
+export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onDelete }: Props) {
+  const [dx, setDx] = useState(0);
+  const startX = useRef<number | null>(null);
+  const swiping = useRef(false);
+
+  const done = item.status === 'bought' || item.status === 'substituted';
+  const notFound = item.status === 'not_found';
+  const urgent = item.priority === 'urgent' && item.status === 'pending';
+
+  const minH = density === 'shopping' ? 'min-h-16' : 'min-h-14';
+  const collapsed = done ? (density === 'shopping' ? 'min-h-12' : 'min-h-11') : minH;
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (readOnly) return;
+    startX.current = e.clientX;
+    swiping.current = true;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!swiping.current || startX.current === null) return;
+    setDx(e.clientX - startX.current);
+  };
+  const onPointerUp = () => {
+    if (!swiping.current) return;
+    swiping.current = false;
+    if (dx > SWIPE_THRESHOLD && !done) {
+      onBought(item.id); // swipe right → bought (§2.3)
+    } else if (dx < -SWIPE_THRESHOLD) {
+      onMenu(item); // swipe left → menu (substitute / not found / delete)
+    }
+    setDx(0);
+    startX.current = null;
+  };
+
+  // State → icon + colour
+  let Icon = PendingIcon;
+  let iconColor = 'var(--ink-soft)';
+  if (urgent) {
+    Icon = UrgentIcon;
+    iconColor = 'var(--urgent)';
+  } else if (done && item.status === 'substituted') {
+    Icon = SubIcon;
+    iconColor = 'var(--sub)';
+  } else if (done) {
+    Icon = BoughtIcon;
+    iconColor = 'var(--brand)';
+  } else if (notFound) {
+    Icon = NotFoundIcon;
+    iconColor = 'var(--ink-faint)';
+  }
+
+  const rowBg = urgent
+    ? 'var(--urgent-tint)'
+    : item.status === 'substituted'
+      ? 'var(--sub-tint)'
+      : aisleTint(item.category);
+
+  return (
+    <div className="relative overflow-hidden" style={{ viewTransitionName: `item-${item.id}` }}>
+      {/* Swipe reveals (icon-led, never colour-only) */}
+      <div className="absolute inset-0 flex items-center justify-between px-5">
+        <span className="flex items-center gap-2 font-semibold text-on-brand" style={{ color: 'var(--brand)' }}>
+          <BoughtIcon /> Bought
+        </span>
+        <span className="flex items-center gap-2 font-semibold" style={{ color: 'var(--bin)' }}>
+          More <BinIcon />
+        </span>
+      </div>
+
+      <div
+        className={`relative flex items-center gap-3 border-b border-line px-4 ${collapsed}
+          motion-safe:transition-[min-height,transform,opacity] motion-safe:duration-considered motion-safe:ease-out
+          ${done ? 'opacity-50' : notFound ? 'opacity-70' : ''}`}
+        style={{
+          backgroundColor: rowBg,
+          transform: dx ? `translateX(${dx}px)` : undefined,
+          transition: dx ? 'none' : undefined,
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+      >
+        {/* 4px aisle-colour tab (§2.3) */}
+        <span
+          className="absolute left-0 top-0 h-full w-1"
+          style={{ backgroundColor: urgent ? 'var(--urgent)' : aisleColor(item.category) }}
+          aria-hidden="true"
+        />
+
+        {/* Checkbox / state icon — tap = bought */}
+        <button
+          onClick={() => !readOnly && !done && onBought(item.id)}
+          disabled={readOnly || done}
+          aria-label={done ? `${item.name}, ${item.status}` : `Mark ${item.name} as bought`}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-pill"
+          style={{ color: iconColor }}
+        >
+          <Icon className={done ? 'anim-tick-pop' : undefined} />
+        </button>
+
+        {/* Body — tap = edit */}
+        <button
+          className="flex min-w-0 flex-1 flex-col items-start py-2 text-left"
+          onClick={() => !readOnly && onEdit(item)}
+        >
+          <span
+            className={`truncate font-medium text-ink ${density === 'shopping' ? 'text-[18px]' : 'text-item'} ${
+              done ? 'text-ink-faint line-through' : ''
+            }`}
+          >
+            {item.name}
+            {notFound && <span className="ml-1 text-meta text-ink-faint">(attempt {item.attempt_count})</span>}
+          </span>
+          <span className="truncate text-meta text-ink-soft">{subLabel(item)}</span>
+        </button>
+
+        {/* Qty chip — hidden when 1 (§2.3) */}
+        {item.quantity > 1 && (
+          <span className="tnum shrink-0 rounded-pill bg-surface-2 px-2.5 py-1 text-meta font-semibold text-ink">
+            ×{item.quantity}
+          </span>
+        )}
+
+        {/* Overflow */}
+        {!readOnly && (
+          <button
+            onClick={() => (done ? onDelete(item.id) : onMenu(item))}
+            aria-label="Item actions"
+            className="grid h-11 w-9 shrink-0 place-items-center text-ink-faint hover:text-ink"
+          >
+            ⋯
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function subLabel(item: Item): string {
+  if (item.status === 'pending' && item.priority === 'urgent') return 'Urgent';
+  switch (item.status) {
+    case 'bought':
+      return `Bought${item.acted_by_name ? ` by ${item.acted_by_name}` : ''}`;
+    case 'substituted':
+      return `Substituted · ${item.substitution_note ?? ''}`;
+    case 'not_found':
+      return 'Not found — rolled over';
+    default:
+      return `${AISLES[item.category].label}${item.added_by_name ? ` · added by ${item.added_by_name}` : ''}`;
+  }
+}

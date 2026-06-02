@@ -1,0 +1,124 @@
+/* -----------------------------------------------------------------------------
+   Fonts (§1.4, §10) — @import MUST precede @tailwind.
+   NOTE: for production these MUST be self-hosted + subset + font-display: swap,
+   with JetBrains Mono lazy-loaded on the Reporting route only. The @import below
+   is a dev convenience; see docs/PERFORMANCE.md for the self-host task.
+   -------------------------------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Hanken+Grotesk:wght@400..700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: theme('fontFamily.body');
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* iOS safe areas (notch / home indicator) */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Paper-grain overlay (§1.5) — CSS only, no library, never intercepts taps. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    mix-blend-mode: var(--grain-blend);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+    min-height: 100dvh;
+  }
+
+  /* Visible focus everywhere (§1.8) */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Tabular quantities (§1.4) */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Motion keyframes (§1.6). Degrade under prefers-reduced-motion (§1.8).
+   -------------------------------------------------------------------------- */
+@layer utilities {
+  @keyframes tick-pop {
+    0% { transform: scale(1); }
+    55% { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+  .anim-tick-pop {
+    animation: tick-pop var(--dur-base) var(--ease-spring);
+  }
+
+  @keyframes item-land {
+    from { transform: translateY(-8px) scale(0.98); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  .anim-item-land {
+    animation: item-land 240ms var(--ease-out);
+  }
+
+  @keyframes urgent-flash {
+    0% { background-color: var(--urgent-tint); }
+    100% { background-color: transparent; }
+  }
+  .anim-urgent-flash {
+    animation: urgent-flash 600ms var(--ease-out);
+  }
+
+  @keyframes rollover-carry {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(-6px); opacity: 0; }
+  }
+
+  /* List load stagger (capped ~10 rows, 30ms each) (§1.6) */
+  @keyframes row-stagger {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* View Transitions: the mode-shift signature (§1.6). Cross-fade fallback is
+     automatic; the reflow choreography is the bloom of colour bands. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: var(--dur-scene);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,26 @@
+# Minimal Supabase project config. `supabase start` reads this for local dev.
+project_id = "trolley"
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+# Magic-link only; no passwords (§2.1, §5.3).
+enable_signup = true
+# Long-lived sessions so nobody is bounced to login mid-shop (§5.3).
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+[auth.email]
+enable_confirmations = false
+# Short single-use magic links; rate-limited send guards email bombing (§5.6).
+max_frequency = "60s"
+
+[functions.send-push]
+verify_jwt = true
+
+[functions.recurring]
+# Scheduled via cron; invoked by the platform scheduler, not end users.
+verify_jwt = false
