@@ -3,7 +3,7 @@ project_id = "trolley"
 
 [db]
 port = 54322
-major_version = 15
+major_version = 17
 
 [auth]
 # Magic-link only; no passwords (§2.1, §5.3).
