@@ -1,72 +1,50 @@
-// One-off icon generator — writes brand-green PNGs with a white "T" glyph so the
-// PWA has valid icons without a binary asset pipeline. Re-run with `node
-// scripts/gen-icons.mjs`. Replace with proper designed icons before launch.
-import { deflateSync } from 'node:zlib';
+// Canonical icon generator — the chosen design: a forward-tilted motion trolley
+// (white) with speed lines, on a VERTICAL green→teal gradient. No accent dot.
+// Re-run after design tweaks:  node scripts/gen-icons.mjs
+import { Resvg } from '@resvg/resvg-js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 mkdirSync('public', { recursive: true });
 
-const BRAND = [0x2f, 0x8f, 0x5b];
-const WHITE = [0xff, 0xff, 0xff];
+const TOP = '#46B26F'; // greenLt
+const BOT = '#2B7E77'; // tealDk
+const LINE = '#FFFFFF';
+const Rk = 112; // corner radius at 512
 
-function crc32(buf) {
-  let c = ~0;
-  for (let i = 0; i < buf.length; i++) {
-    c ^= buf[i];
-    for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
-  }
-  return ~c >>> 0;
+const grad = `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="${TOP}"/><stop offset="1" stop-color="${BOT}"/></linearGradient></defs>`;
+
+// speed lines (left) + forward-tilted cart (white), no dot
+const content = `
+  <g stroke="${LINE}" stroke-width="20" stroke-linecap="round">
+    <path d="M84 206 h74"/><path d="M104 258 h54"/><path d="M120 310 h38"/>
+  </g>
+  <g transform="rotate(-10 290 260)"><g transform="translate(26,0)">
+    <g fill="none" stroke="${LINE}" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M120 150 h44 l40 168 h150 l40 -120 H196"/>
+      <circle cx="222" cy="372" r="20" fill="${LINE}"/><circle cx="350" cy="372" r="20" fill="${LINE}"/>
+    </g>
+  </g></g>`;
+
+// variant: 'rounded' (standard/any), 'mask' (full-bleed + safe-zone), 'square' (apple)
+function svg(variant) {
+  const bg =
+    variant === 'rounded'
+      ? `<rect width="512" height="512" rx="${Rk}" fill="url(#g)"/>`
+      : `<rect width="512" height="512" fill="url(#g)"/>`; // full-bleed for mask + apple
+  // maskable safe zone: shrink content to the central ~80% so circular masks don't clip
+  const inner =
+    variant === 'mask'
+      ? `<g transform="translate(256 256) scale(0.8) translate(-256 -256)">${content}</g>`
+      : content;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">${grad}${bg}${inner}</svg>`;
 }
 
-function chunk(type, data) {
-  const t = Buffer.from(type, 'ascii');
-  const body = Buffer.concat([t, data]);
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length);
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(body));
-  return Buffer.concat([len, body, crc]);
-}
+const png = (s, size) => new Resvg(s, { fitTo: { mode: 'width', value: size } }).render().asPng();
 
-function png(size, { maskable } = {}) {
-  const px = (x, y) => {
-    // glyph geometry — a chunky "T"
-    const m = maskable ? 0.78 : 0.62; // glyph extent (smaller for maskable safe zone)
-    const cx = size / 2;
-    const half = (size * m) / 2;
-    const top = cx - half;
-    const bottom = cx + half;
-    const barH = size * 0.16;
-    const stemW = size * 0.16;
-    const inX = x >= top && x <= bottom;
-    const inTopBar = y >= top && y <= top + barH && inX;
-    const inStem = Math.abs(x - cx) <= stemW / 2 && y >= top && y <= bottom;
-    return inTopBar || inStem ? WHITE : BRAND;
-  };
-
-  const raw = Buffer.alloc((size * 3 + 1) * size);
-  let o = 0;
-  for (let y = 0; y < size; y++) {
-    raw[o++] = 0; // filter: none
-    for (let x = 0; x < size; x++) {
-      const [r, g, b] = px(x, y);
-      raw[o++] = r;
-      raw[o++] = g;
-      raw[o++] = b;
-    }
-  }
-
-  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // colour type: truecolour
-  return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
-}
-
-writeFileSync('public/pwa-192.png', png(192));
-writeFileSync('public/pwa-512.png', png(512));
-writeFileSync('public/pwa-512-maskable.png', png(512, { maskable: true }));
-writeFileSync('public/apple-touch-icon.png', png(180));
-console.log('icons written to public/');
+writeFileSync('public/pwa-192.png', png(svg('rounded'), 192));
+writeFileSync('public/pwa-512.png', png(svg('rounded'), 512));
+writeFileSync('public/pwa-512-maskable.png', png(svg('mask'), 512));
+writeFileSync('public/apple-touch-icon.png', png(svg('square'), 180));
+writeFileSync('public/favicon.svg', svg('rounded'));
+console.log('icons written to public/ (vertical green→teal gradient, tilted motion trolley)');
