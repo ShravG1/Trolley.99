@@ -70,6 +70,16 @@ Deno.serve(async () => {
       continue;
     }
 
+    // Attribute scheduled items to the group's creator (items.added_by is a real
+    // FK to auth.users — a group id would violate it). The name snapshot stays
+    // "Schedule" so the row reads "Added on schedule" (§1.7, §11.2).
+    const { data: grp } = await admin
+      .from('groups')
+      .select('created_by')
+      .eq('id', r.group_id)
+      .maybeSingle();
+    if (!grp) continue;
+
     await admin.from('items').insert({
       id: crypto.randomUUID(),
       trip_id: trip.id,
@@ -78,7 +88,7 @@ Deno.serve(async () => {
       category: r.category,
       priority: 'normal',
       status: 'pending',
-      added_by: r.group_id, // sentinel; real impl stores a system actor id
+      added_by: grp.created_by,
       added_by_name: 'Schedule', // surfaces the "Added on schedule" note (§1.7)
       attempt_count: 1,
       created_at: new Date().toISOString(),
