@@ -81,7 +81,20 @@ export function useSupabaseSync(): Sync {
   // through a shop (§5.3).
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
+    const sb = supabase;
+    sb.auth.getSession().then(async ({ data }) => {
+      // Validate the stored session's user still exists server-side (anonymous
+      // users can be pruned). If it's gone, drop it so the anon-sign-in effect
+      // mints a fresh one — otherwise reads look empty and writes FK-error.
+      if (data.session) {
+        const { error } = await sb.auth.getUser();
+        if (error) {
+          await sb.auth.signOut();
+          setSession(null);
+          setAuthChecked(true);
+          return;
+        }
+      }
       setSession(data.session);
       setAuthChecked(true);
     });

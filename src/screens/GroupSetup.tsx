@@ -44,7 +44,13 @@ export function GroupSetup({ onDone }: { onDone: () => void }) {
       window.history.replaceState({}, '', '/');
       onDone();
     } catch (e) {
-      setError(e instanceof Error && e.message ? humanise(e.message) : 'That didn’t work — try again.');
+      // Surface the real reason — generic messages make field bugs impossible to
+      // diagnose. humanise() still friendlies-up the codes we know.
+      const raw =
+        (e as { message?: string; code?: string; hint?: string })?.message ??
+        String(e);
+      const code = (e as { code?: string })?.code;
+      setError(humanise(raw) + (code ? ` (${code})` : ''));
     } finally {
       setBusy(false);
     }

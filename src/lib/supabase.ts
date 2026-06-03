@@ -80,9 +80,30 @@ export async function signOut(): Promise<void> {
   await supabase?.auth.signOut();
 }
 
+/**
+ * Make sure we have a session before a write. Belt-and-braces for browsers that
+ * drop the anonymous session (e.g. Safari opened from an in-app launcher with
+ * restricted storage) — without it, an RPC fires unauthenticated and fails.
+ */
+export async function ensureSession(): Promise<void> {
+  if (!supabase) return;
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    // getSession() only reads local storage — validate the user still exists on
+    // the server (anonymous users can be pruned), else the next write hits a
+    // foreign-key error. getUser() round-trips and errors if the user is gone.
+    const { error } = await supabase.auth.getUser();
+    if (!error) return;
+    await supabase.auth.signOut();
+  }
+  const { error } = await supabase.auth.signInAnonymously();
+  if (error) throw new Error(`sign-in failed: ${error.message}`);
+}
+
 /** Create a group + first membership + empty active trip in one RPC (§5.2). */
 export async function createGroup(name: string, displayName: string): Promise<string | null> {
   if (!supabase) return null;
+  await ensureSession();
   const { data, error } = await supabase.rpc('create_group', {
     p_name: name,
     p_display_name: displayName,
@@ -94,6 +115,7 @@ export async function createGroup(name: string, displayName: string): Promise<st
 /** Join a group via the RPC — never raw table access (§5.2). */
 export async function joinGroup(code: string, displayName: string): Promise<string | null> {
   if (!supabase) return null;
+  await ensureSession();
   const { data, error } = await supabase.rpc('join_group', {
     p_code: code,
     p_display_name: displayName,

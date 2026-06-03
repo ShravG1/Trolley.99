@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(14);
+select plan(13);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -65,38 +65,37 @@ select is(
   'B cannot read A''s invites');
 
 -- --- Cross-group WRITE isolation -----------------------------------------
-select throws_ok(
-  $$ insert into items (id, trip_id, name, added_by, added_by_name)
-     select gen_random_uuid(), id, 'sneaky', '22222222-2222-2222-2222-222222222222', 'Ben'
-     from trips where group_id = (select id from groups offset 0 limit 0) $$,
-  null,
-  'B cannot resolve A''s trip id to write an item (RLS hides it)');
-
--- Even with A's trip id leaked, the WITH CHECK + membership blocks the insert.
+-- Grab A's real trip id (impersonating A so RLS lets us read it), then attack as B.
 select act_as('11111111-1111-1111-1111-111111111111');
 select id as trip_a from trips where group_id = :'gid_a' limit 1 \gset
 select act_as('22222222-2222-2222-2222-222222222222');
 
+-- Even with A's trip id leaked, the items WITH CHECK blocks the insert (42501).
+-- (NULL errmsg => match on the SQLSTATE only, not the exact message text.)
 select throws_ok(
   format($$ insert into items (id, trip_id, name, added_by, added_by_name)
             values (gen_random_uuid(), %L, 'sneaky', '22222222-2222-2222-2222-222222222222', 'Ben') $$, :'trip_a'),
-  '42501', -- insufficient_privilege (RLS)
+  '42501', NULL,
   'B cannot write an item into A''s trip even with the trip id');
 
 select is(
   (select count(*) from items where name = 'sneaky')::int, 0,
   'no sneaky row landed');
 
-select throws_ok(
-  format($$ update trips set status = 'shopping' where id = %L $$, :'trip_a'),
-  null,
-  'B cannot mutate A''s trip');
+-- An UPDATE that RLS filters out affects 0 rows (no error) — so prove the trip
+-- is UNCHANGED rather than expecting a throw.
+update trips set status = 'shopping' where id = :'trip_a';
+select act_as('11111111-1111-1111-1111-111111111111');
+select is(
+  (select status::text from trips where id = :'trip_a'), 'active',
+  'B cannot mutate A''s trip (RLS made it a no-op)');
+select act_as('22222222-2222-2222-2222-222222222222');
 
 -- B cannot self-insert into A's membership (no client insert grant; RPC only).
 select throws_ok(
   format($$ insert into group_members (group_id, user_id, display_name)
             values (%L, '22222222-2222-2222-2222-222222222222', 'Intruder') $$, :'gid_a'),
-  '42501',
+  '42501', NULL,
   'B cannot insert themselves into A''s group (join is RPC-only)');
 
 -- --- join_group: valid vs expired vs bogus codes -------------------------
