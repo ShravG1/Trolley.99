@@ -20,3 +20,6 @@ supabase/.temp
 npm-debug.log*
 *.log
 .vercel
+
+# TS incremental build cache
+*.tsbuildinfo
