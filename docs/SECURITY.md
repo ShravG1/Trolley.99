@@ -40,11 +40,26 @@ and is public; RLS is the only thing stopping one household reading another's li
 
 ## Auth (§5.3)
 
-- Magic link only. The link *is* the auth: short TTL, single-use, bound to the
-  requesting email. The "magic link sent" response is uniform whether or not the
-  email exists (no enumeration).
+**Anonymous-first (the shipped model).** A shopping list is low-sensitivity, so the
+default is zero-friction: opening the app silently calls `signInAnonymously()`,
+minting a real `auth.uid()` with no email/password. The user picks a display name
+and creates a group (gets a code) or joins by code. **RLS is unchanged** — every
+anonymous user is a real identity, so membership-based isolation still holds. This
+is the key point: we dropped the login *friction*, not the security model.
+
+- **Optional email backup.** An anonymous account is device-bound (session in
+  localStorage). The creator can attach an email in Settings (`updateUser({email})`),
+  which makes the account permanent and recoverable on another device via magic
+  link. Opt-in, off by default (§11 minimisation).
+- **Magic-link recovery.** Kept as the recovery path for users who attached an
+  email (GroupSetup → "Recover it", or the fallback Welcome screen if anonymous
+  sign-ins are ever disabled). The link is the auth: short TTL, single-use; the
+  "sent" response is uniform whether or not the email exists (no enumeration).
 - Sessions are long-lived with refresh-token rotation (`config.toml`) so nobody is
   bounced to login mid-shop.
+
+Trade-off accepted: clearing browser data / switching device without an attached
+email = a new identity (re-enter the code to rejoin). Fine for a fridge list.
 - **Token storage decision (explicit): `localStorage`** (Supabase default). Accepted
   *only because* XSS is locked down — React escaping everywhere, zero
   `dangerouslySetInnerHTML`, and a CSP at the edge (§5.5, §5.7). Revisit (cookie

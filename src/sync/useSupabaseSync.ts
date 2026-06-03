@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel, Session } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured, listMyGroups } from '@/lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  listMyGroups,
+  signInAnonymously,
+  setAnonymousFlag,
+} from '@/lib/supabase';
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
 import type { GroupMember, Item, Trip } from '@/types/models';
@@ -63,6 +69,7 @@ function rowToTrip(r: Row, members: GroupMember[]): Trip {
 export function useSupabaseSync(): Sync {
   const [status, setStatus] = useState<SyncStatus>(isSupabaseConfigured() ? 'loading' : 'demo');
   const [session, setSession] = useState<Session | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [tick, setTick] = useState(0);
 
   const itemsChannel = useRef<RealtimeChannel | null>(null);
@@ -74,17 +81,39 @@ export function useSupabaseSync(): Sync {
   // through a shop (§5.3).
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthChecked(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+      setAuthChecked(true);
+      setAnonymousFlag(s?.user?.is_anonymous ?? true);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // No session once auth has been checked → silently sign in anonymously (the
+  // default, frictionless path). If anonymous sign-ins are off, fall back to the
+  // email recovery screen.
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !authChecked || session) return;
+    let cancelled = false;
+    (async () => {
+      const ok = await signInAnonymously();
+      if (cancelled) return;
+      if (!ok) setStatus('signed-out'); // recovery screen (magic link)
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authChecked, session]);
 
   useEffect(() => {
     if (!isSupabaseConfigured() || !supabase) return;
     if (!session) {
-      setStatus('signed-out');
       useStore.getState().setRemote(null);
-      return;
+      return; // status driven by the anon-sign-in effect above
     }
 
     let cancelled = false;

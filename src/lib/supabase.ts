@@ -39,6 +39,43 @@ export async function signInWithMagicLink(email: string): Promise<void> {
   });
 }
 
+/**
+ * Silent anonymous sign-in (the default path). Mints a real auth identity with
+ * no email/password so RLS still applies, but there's zero login friction.
+ * Returns false if anonymous sign-ins are disabled on the project (caller then
+ * falls back to the email recovery screen).
+ */
+export async function signInAnonymously(): Promise<boolean> {
+  if (!supabase) return false;
+  const { error } = await supabase.auth.signInAnonymously();
+  return !error;
+}
+
+/** True once the current session belongs to a permanent (email-attached) user. */
+export function isAnonymousUser(): boolean {
+  // Set from the session elsewhere; this is a convenience for components.
+  return _isAnon;
+}
+let _isAnon = true;
+export function setAnonymousFlag(v: boolean) {
+  _isAnon = v;
+}
+
+/**
+ * Attach an email to the current (anonymous) account so it survives a device
+ * change — "save your list". Supabase sends a confirmation link; once clicked,
+ * the account becomes permanent and can be recovered by magic link on any
+ * device. Low-friction, opt-in (§11 minimisation).
+ */
+export async function attachEmail(email: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.auth.updateUser(
+    { email },
+    { emailRedirectTo: `${window.location.origin}/` }
+  );
+  if (error) throw error;
+}
+
 export async function signOut(): Promise<void> {
   await supabase?.auth.signOut();
 }

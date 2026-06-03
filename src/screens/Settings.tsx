@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { AISLES } from '@/lib/aisles';
-import { isSupabaseConfigured, createInvite } from '@/lib/supabase';
+import { isSupabaseConfigured, createInvite, supabase, attachEmail } from '@/lib/supabase';
+import { useEffect } from 'react';
 
 // Settings (§2.1 invite, §2.8 recurring, §2.9 reporting gate, §11 privacy).
 export function Settings() {
@@ -84,6 +85,13 @@ export function Settings() {
         </ul>
       </Section>
 
+      {/* Account backup (anonymous → permanent) */}
+      {isSupabaseConfigured() && (
+        <Section title="Your list">
+          <AccountBackup />
+        </Section>
+      )}
+
       {/* Recurring */}
       <Section title="Recurring items">
         <p className="mb-3 text-body text-ink-soft">
@@ -121,6 +129,71 @@ export function Settings() {
           <span className="text-ink-faint">→</span>
         </Link>
       </Section>
+    </div>
+  );
+}
+
+// Optional email backup (§ auth): anonymous by default; attaching an email makes
+// the account portable across devices. Low-friction, opt-in.
+function AccountBackup() {
+  const [email, setEmail] = useState('');
+  const [savedEmail, setSavedEmail] = useState<string | null>(null);
+  const [anon, setAnon] = useState(true);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    supabase?.auth.getUser().then(({ data }) => {
+      setAnon(data.user?.is_anonymous ?? true);
+      setSavedEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  if (!anon && savedEmail) {
+    return (
+      <p className="text-body text-ink-soft">
+        Saved to <span className="font-semibold text-ink">{savedEmail}</span>. You can sign back in on any
+        device with that email.
+      </p>
+    );
+  }
+
+  if (sent) {
+    return <p className="text-body text-ink-soft">Check your email and tap the link to lock it in.</p>;
+  }
+
+  return (
+    <div>
+      <p className="mb-3 text-body text-ink-soft">
+        Your list lives on this device right now. Add an email to keep it if you switch phones or clear your
+        browser — optional, and we only use it to sign you back in.
+      </p>
+      <div className="flex items-center gap-2">
+        <input
+          type="email"
+          inputMode="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@email.com"
+          className="flex-1 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink"
+        />
+        <button
+          onClick={async () => {
+            if (!email.trim()) return;
+            setError('');
+            try {
+              await attachEmail(email.trim());
+              setSent(true);
+            } catch {
+              setError('Couldn’t save that — try a different email.');
+            }
+          }}
+          className="min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand"
+        >
+          Save
+        </button>
+      </div>
+      {error && <p className="mt-2 text-meta text-urgent">{error}</p>}
     </div>
   );
 }
