@@ -26,3 +26,6 @@ npm-debug.log*
 
 # scratch icon previews
 icon-previews/
+
+# HUB icon scratch outputs
+hub-icons/
