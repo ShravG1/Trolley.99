@@ -7,7 +7,40 @@ import { supabase } from './supabase';
 // installed state and fall back silently where push is unavailable.
 
 export function pushSupported(): boolean {
-  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  return (
+    typeof navigator !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    typeof window !== 'undefined' &&
+    'PushManager' in window &&
+    'Notification' in window
+  );
+}
+
+const ASKED_KEY = 'trolley.pushAsked';
+
+/**
+ * Should we nudge the user about notifications right now? True only if push is
+ * relevant, undecided, and we haven't asked before — so we can prompt
+ * contextually (e.g. just after their first urgent item) rather than on load.
+ */
+export function shouldNudge(): boolean {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined') return false;
+  try {
+    if (localStorage.getItem(ASKED_KEY)) return false;
+  } catch {
+    return false;
+  }
+  if (Notification.permission !== 'default') return false; // already granted/denied
+  // On iOS we can still nudge — but to install, not for permission (handled in UI).
+  return pushSupported() || (isIOS() && !isInstalledPWA());
+}
+
+export function markNudgeAsked(): void {
+  try {
+    localStorage.setItem(ASKED_KEY, '1');
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isInstalledPWA(): boolean {

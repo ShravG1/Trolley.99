@@ -43,18 +43,32 @@ written and ready to deploy. "To wire" = the contained next step.
   normal debounced count) fires via `send-push`. Demo mode is untouched (`remote`
   stays null).
 
+## Wired in the review pass
+
+- **Realtime publication fix (§6.4):** `items`/`trips` added to `supabase_realtime`
+  — without it live sync emitted nothing. (`0002_realtime.sql`.)
+- **Push notifications (§2.10):** custom service worker (`src/sw.ts`,
+  `injectManifest`) with `push`/`notificationclick` handlers; contextual nudge
+  after a first urgent item; iOS "Add to Home Screen" hint when not installed;
+  `send-push` fan-out already wired in the writer.
+- **Stale-shopper take-over (§2.6):** `take_over_shopping` RPC (90-min rule) +
+  spectator "take over" button + shopper "still shopping?" nudge.
+- **Account/group lifecycle (§11.4):** `leave_group` (ownership transfer +
+  last-member cleanup), `clear_history`, `delete_account` (FKs detach-on-delete so
+  the audit trail survives) — wired to the Privacy screen.
+- **Learned hot-list type-ahead (§2.4)** and **persisted recurring items (§2.8)**.
+- **Swipe gesture** axis-lock + `touch-action: pan-y` so it doesn't fight scroll.
+
 ## To wire (next, contained changes)
 
-1. **Generated types (§6.1):** `supabase gen types` → `src/types/database.ts`, swap
-   imports off `models.ts`.
-2. **Push UX hooks (§2.10):** call `enablePush()` contextually after the first
-   urgent mark; on iOS show the "Add to Home Screen" hint when `canPrompt()` is
-   false. Add a custom SW `push`/`notificationclick` handler (switch
-   `vite-plugin-pwa` to `injectManifest`).
-3. **Self-host + subset fonts (§10)** — see `docs/PERFORMANCE.md`.
-4. **Wire error tracking (Sentry) in `ErrorBoundary` + push send/fail metrics (§9).**
-5. **Recurring scheduler cron** — schedule the `recurring` Edge Function (e.g.
-   `supabase functions deploy recurring` + a cron trigger).
+1. **Generated types (§6.1):** `supabase gen types` → `src/types/database.ts`.
+2. **Schedule the `recurring` Edge Function** — add a cron trigger (the function
+   is deployed + idempotent; nothing fires it yet).
+3. **Reporting on real data (§2.9)** — read completed-trip aggregates instead of
+   the demo tally.
+4. **Self-host + subset fonts (§10)** — see `docs/PERFORMANCE.md`.
+5. **Error tracking (Sentry) in `ErrorBoundary` + push send/fail metrics (§9).**
+6. **Custom SMTP** for magic-link recovery deliverability (§5.6).
 
 ## Explicitly out of scope for V1 (§0)
 

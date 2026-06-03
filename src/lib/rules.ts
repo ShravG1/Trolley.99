@@ -24,3 +24,25 @@ export function windowOpen(trip: Trip, nowMs: number): boolean {
   if (trip.status !== 'shopping' || !trip.lastminute_until) return false;
   return nowMs <= new Date(trip.lastminute_until).getTime();
 }
+
+const STALE_MS = 90 * 60_000; // §2.6 — no activity for 90 min = abandoned shop
+
+/**
+ * Has the active shop gone stale? Used to offer the group a "Take over" and to
+ * nudge the shopper "Still shopping?". `lastActivityMs` is the latest of the
+ * trip start and any item action. Server's take_over RPC enforces the same
+ * 90-min rule for real (§7.1) — this just drives the UI.
+ */
+export function isShopStale(trip: Trip, lastActivityMs: number, nowMs: number): boolean {
+  if (trip.status !== 'shopping' || !trip.started_at) return false;
+  return nowMs - lastActivityMs > STALE_MS;
+}
+
+/** Latest activity timestamp (ms) across the trip start and item actions. */
+export function lastActivity(trip: Trip, items: { acted_at: string | null }[]): number {
+  let latest = trip.started_at ? new Date(trip.started_at).getTime() : 0;
+  for (const i of items) {
+    if (i.acted_at) latest = Math.max(latest, new Date(i.acted_at).getTime());
+  }
+  return latest;
+}

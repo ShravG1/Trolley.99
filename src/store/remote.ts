@@ -14,4 +14,5 @@ export interface RemoteWriter {
   startShopping(tripId: string, minutes: number | null): void;
   cancelShopping(tripId: string): void;
   completeTrip(tripId: string): void;
+  takeOverShopping(tripId: string): void;
 }

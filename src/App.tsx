@@ -7,6 +7,7 @@ import { Archive } from '@/screens/Archive';
 import { Privacy } from '@/screens/Privacy';
 import { GroupSetup } from '@/screens/GroupSetup';
 import { Toasts } from '@/components/Toasts';
+import { PushNudge } from '@/components/PushNudge';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -51,6 +52,7 @@ export default function App() {
           </Routes>
         )}
         <Toasts />
+        <PushNudge />
         <UpdatePrompt />
       </BrowserRouter>
     </ErrorBoundary>

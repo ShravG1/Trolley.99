@@ -27,6 +27,8 @@ const SWIPE_THRESHOLD = 72;
 export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onDelete }: Props) {
   const [dx, setDx] = useState(0);
   const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
+  const axisLocked = useRef<'x' | 'y' | null>(null);
   const swiping = useRef(false);
 
   const done = item.status === 'bought' || item.status === 'substituted';
@@ -39,14 +41,31 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
   const onPointerDown = (e: React.PointerEvent) => {
     if (readOnly) return;
     startX.current = e.clientX;
+    startY.current = e.clientY;
     swiping.current = true;
+    axisLocked.current = null;
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!swiping.current || startX.current === null) return;
-    setDx(e.clientX - startX.current);
+    if (!swiping.current || startX.current === null || startY.current === null) return;
+    const dxNow = e.clientX - startX.current;
+    const dyNow = e.clientY - startY.current;
+    // Axis lock: decide once whether this gesture is a horizontal swipe or a
+    // vertical scroll, so swiping never fights the list scrolling (§2.3 mobile).
+    if (axisLocked.current === null && Math.abs(dxNow) + Math.abs(dyNow) > 8) {
+      axisLocked.current = Math.abs(dxNow) > Math.abs(dyNow) ? 'x' : 'y';
+    }
+    if (axisLocked.current === 'y') {
+      swiping.current = false; // hand the gesture back to the scroller
+      setDx(0);
+      return;
+    }
+    if (axisLocked.current === 'x') setDx(dxNow);
   };
   const onPointerUp = () => {
-    if (!swiping.current) return;
+    if (!swiping.current) {
+      setDx(0);
+      return;
+    }
     swiping.current = false;
     if (dx > SWIPE_THRESHOLD && !done) {
       onBought(item.id); // swipe right → bought (§2.3)
@@ -55,6 +74,7 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
     }
     setDx(0);
     startX.current = null;
+    startY.current = null;
   };
 
   // State → icon + colour
@@ -100,6 +120,7 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
           backgroundColor: rowBg,
           transform: dx ? `translateX(${dx}px)` : undefined,
           transition: dx ? 'none' : undefined,
+          touchAction: 'pan-y', // allow vertical scroll; we own horizontal swipe
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

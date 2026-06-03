@@ -4,15 +4,18 @@ import { QtyStepper } from './QtyStepper';
 import { AISLES, AISLE_ORDER, aisleColor, type AisleKey } from '@/lib/aisles';
 import { guessAisle } from '@/lib/categorise';
 import { useStore } from '@/store/useStore';
+import { getHotList, isSupabaseConfigured } from '@/lib/supabase';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-// Hot list (server-learned in production, §4). A small demo set powers the
-// frequency-ranked type-ahead chips here.
+// Starter suggestions, shown until the group's learned hot list (server-side,
+// §4) has enough completed-trip history to take over.
 const HOT_LIST = ['Milk', 'Bread', 'Eggs', 'Butter', 'Bananas', 'Chicken', 'Pasta', 'Tea bags', 'Loo roll', 'Cheese'];
+
+const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
 // AddSheet (§2.4) — type-ahead chips, editable aisle tag (re-aisle is
 // MANDATORY), qty stepper, urgent toggle, multi-add tally.
@@ -20,12 +23,23 @@ export function AddSheet({ open, onClose }: Props) {
   const addItem = useStore((s) => s.addItem);
   const multiAddCount = useStore((s) => s.multiAddCount);
   const resetMultiAdd = useStore((s) => s.resetMultiAdd);
+  const groupId = useStore((s) => s.trip.group_id);
 
   const [name, setName] = useState('');
   const [qty, setQty] = useState(1);
   const [urgent, setUrgent] = useState(false);
   const [aisle, setAisle] = useState<AisleKey>('other');
   const [aisleOpen, setAisleOpen] = useState(false);
+  // Learned hot list (frequency-ranked from completed trips); falls back to the
+  // starter list below until the group has shopping history (§2.4).
+  const [hot, setHot] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!open || !isSupabaseConfigured()) return;
+    getHotList(groupId)
+      .then(setHot)
+      .catch(() => setHot([]));
+  }, [open, groupId]);
 
   // Auto-categorise as you type; user can override via the editable tag.
   useEffect(() => {
@@ -38,8 +52,9 @@ export function AddSheet({ open, onClose }: Props) {
 
   const suggestions = useMemo(() => {
     const q = name.trim().toLowerCase();
-    return HOT_LIST.filter((s) => !q || s.toLowerCase().includes(q)).slice(0, 6);
-  }, [name]);
+    const source = hot.length > 0 ? hot.map(titleCase) : HOT_LIST;
+    return source.filter((s) => !q || s.toLowerCase().includes(q)).slice(0, 6);
+  }, [name, hot]);
 
   function commit() {
     if (!name.trim()) return;

@@ -13,8 +13,15 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // Custom SW (src/sw.ts) so we can handle Web Push (§2.10) + control updates.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'prompt', // §8.3 — prompt "New version — refresh" rather than silent swap
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+      },
       manifest: {
         name: 'Trolley',
         short_name: 'Trolley',
@@ -32,23 +39,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
-          },
-        ],
-      },
-      workbox: {
-        // §8.1 — shell precached (cache-first); list data is network-first via Supabase
-        // and never written into a shared cache (§5.7).
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallbackDenylist: [/^\/auth/, /supabase/],
-        runtimeCaching: [
-          {
-            // Self-hosted fonts: cache-first, long-lived (§10).
-            urlPattern: /\.(?:woff2)$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'fonts',
-              expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
           },
         ],
       },

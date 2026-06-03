@@ -120,3 +120,82 @@ export async function listMyGroups(): Promise<Array<{ group_id: string; display_
   if (error) throw error;
   return data ?? [];
 }
+
+/** Frequency-ranked item names learned from completed trips (§2.4 type-ahead). */
+export async function getHotList(groupId: string): Promise<string[]> {
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from('hot_list')
+    .select('item_name')
+    .eq('group_id', groupId)
+    .order('frequency', { ascending: false })
+    .limit(12);
+  return (data ?? []).map((r) => r.item_name as string);
+}
+
+// --- Lifecycle + recovery RPCs (§2.6, §11.4) -------------------------------
+export async function takeOverShopping(tripId: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('take_over_shopping', { p_trip_id: tripId });
+  if (error) throw error;
+  return data as string | null;
+}
+export async function leaveGroup(groupId: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('leave_group', { p_group_id: groupId });
+  if (error) throw error;
+}
+export async function clearHistory(groupId: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('clear_history', { p_group_id: groupId });
+  if (error) throw error;
+}
+export async function deleteAccount(): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('delete_account');
+  if (error) throw error;
+  await supabase.auth.signOut();
+}
+
+// --- Recurring items CRUD (§2.8) -------------------------------------------
+export interface RecurringRow {
+  id: string;
+  name: string;
+  default_qty: number;
+  category: string;
+  recurrence_rule: string;
+  active: boolean;
+}
+export async function listRecurring(groupId: string): Promise<RecurringRow[]> {
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from('recurring_items')
+    .select('id, name, default_qty, category, recurrence_rule, active')
+    .eq('group_id', groupId)
+    .order('name');
+  return (data ?? []) as RecurringRow[];
+}
+export async function addRecurring(
+  groupId: string,
+  name: string,
+  rule: string,
+  category: string
+): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('recurring_items').insert({
+    group_id: groupId,
+    name: name.trim(),
+    recurrence_rule: rule,
+    category,
+    default_qty: 1,
+    active: true,
+  });
+}
+export async function setRecurringActive(id: string, active: boolean): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('recurring_items').update({ active }).eq('id', id);
+}
+export async function deleteRecurring(id: string): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('recurring_items').delete().eq('id', id);
+}

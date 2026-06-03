@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { groupForList, groupForShopping, counts } from '@/lib/grouping';
+import { isShopStale, lastActivity } from '@/lib/rules';
 import { withViewTransition } from '@/lib/viewTransition';
 import type { Item } from '@/types/models';
 
@@ -26,14 +27,22 @@ export function Home() {
   const shopperName = useStore((s) => s.shopperName());
   const userId = useStore((s) => s.userId);
   const members = useStore((s) => s.members);
-  const { markBought, deleteItem, cancelShopping, finishTrip } = useStore();
+  const { markBought, deleteItem, cancelShopping, finishTrip, takeOverShopping } = useStore();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [startOpen, setStartOpen] = useState(false);
+  // Re-evaluate staleness on a timer so "Take over" / "Still shopping?" appear
+  // without needing a manual refresh (§2.6).
+  const [, setClock] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setClock((c) => c + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const { total, done } = counts(items);
   const others = members.filter((m) => m.user_id !== userId);
+  const stale = isShopStale(trip, lastActivity(trip, items), Date.now());
 
   const windowOpen = trip.lastminute_until ? new Date(trip.lastminute_until).getTime() > Date.now() : false;
   // Spectators (and the shopper's helpers) can only add while the window is open (§7.2).
@@ -111,24 +120,35 @@ export function Home() {
         )}
 
         {mode === 'shopping' && (
-          <div className="flex gap-2">
-            <PrimaryPill variant="neutral" onClick={() => withViewTransition(cancelShopping)}>
-              Cancel
-            </PrimaryPill>
-            <PrimaryPill
-              onClick={() =>
-                withViewTransition(() => {
-                  finishTrip();
-                })
-              }
-            >
-              Finish the trip
-            </PrimaryPill>
-          </div>
+          <>
+            {stale && (
+              <div className="rounded-md bg-urgent-tint px-4 py-2 text-center text-meta font-semibold text-urgent">
+                Still shopping? Tick something or finish the trip so the others aren’t left waiting.
+              </div>
+            )}
+            <div className="flex gap-2">
+              <PrimaryPill variant="neutral" onClick={() => withViewTransition(cancelShopping)}>
+                Cancel
+              </PrimaryPill>
+              <PrimaryPill
+                onClick={() =>
+                  withViewTransition(() => {
+                    finishTrip();
+                  })
+                }
+              >
+                Finish the trip
+              </PrimaryPill>
+            </div>
+          </>
         )}
 
         {mode === 'spectator' && (
-          canAdd ? (
+          stale ? (
+            <PrimaryPill onClick={() => withViewTransition(takeOverShopping)}>
+              {shopperName} went quiet — take over the shop
+            </PrimaryPill>
+          ) : canAdd ? (
             <AddBar onClick={() => setAddOpen(true)} hint="Last-minute add" />
           ) : (
             <div className="rounded-pill bg-surface-2 px-6 py-3 text-center text-meta font-semibold text-ink-soft">

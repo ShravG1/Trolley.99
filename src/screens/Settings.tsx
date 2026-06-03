@@ -1,9 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
-import { AISLES } from '@/lib/aisles';
-import { isSupabaseConfigured, createInvite, supabase, attachEmail } from '@/lib/supabase';
-import { useEffect } from 'react';
+import { guessAisle } from '@/lib/categorise';
+import {
+  isSupabaseConfigured,
+  createInvite,
+  supabase,
+  attachEmail,
+  listRecurring,
+  addRecurring,
+  setRecurringActive,
+  deleteRecurring,
+  type RecurringRow,
+} from '@/lib/supabase';
 
 // Settings (§2.1 invite, §2.8 recurring, §2.9 reporting gate, §11 privacy).
 export function Settings() {
@@ -97,7 +106,7 @@ export function Settings() {
         <p className="mb-3 text-body text-ink-soft">
           Routine bits that get added to the list on schedule — they land with an “Added on schedule” note.
         </p>
-        <RecurringDemo />
+        <RecurringManager />
       </Section>
 
       {/* Reporting gate */}
@@ -225,34 +234,101 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
   );
 }
 
-function RecurringDemo() {
-  const [rows, setRows] = useState([
-    { id: '1', name: 'Milk', rule: 'weekly', on: true },
-    { id: '2', name: 'Bin bags', rule: 'weekly', on: true },
-    { id: '3', name: 'Cat food', rule: 'twice_weekly', on: false },
-  ]);
-  const labels: Record<string, string> = {
-    daily: 'Daily',
-    twice_weekly: 'Twice a week',
-    thrice_weekly: '3× a week',
-    weekly: 'Weekly',
-  };
-  void AISLES;
+const RULE_LABELS: Record<string, string> = {
+  daily: 'Daily',
+  twice_weekly: 'Twice a week',
+  thrice_weekly: '3× a week',
+  weekly: 'Weekly',
+};
+
+// Recurring items (§2.8). Persists to recurring_items when connected; falls back
+// to a read-only demo list otherwise.
+function RecurringManager() {
+  const groupId = useStore((s) => s.trip.group_id);
+  const live = isSupabaseConfigured();
+
+  const [rows, setRows] = useState<RecurringRow[]>([]);
+  const [newName, setNewName] = useState('');
+  const [newRule, setNewRule] = useState('weekly');
+
+  useEffect(() => {
+    if (live) listRecurring(groupId).then(setRows).catch(() => setRows([]));
+  }, [live, groupId]);
+
+  const demo: RecurringRow[] = [
+    { id: '1', name: 'Milk', default_qty: 1, category: 'dairy', recurrence_rule: 'weekly', active: true },
+    { id: '2', name: 'Bin bags', default_qty: 1, category: 'household', recurrence_rule: 'weekly', active: true },
+  ];
+  const data = live ? rows : demo;
+
+  async function add() {
+    if (!newName.trim() || !live) return;
+    await addRecurring(groupId, newName.trim(), newRule, guessAisle(newName));
+    setNewName('');
+    setRows(await listRecurring(groupId));
+  }
+
   return (
-    <ul className="divide-y divide-line">
-      {rows.map((r) => (
-        <li key={r.id} className="flex items-center justify-between py-3">
-          <span className="flex flex-col">
-            <span className="text-item text-ink">{r.name}</span>
-            <span className="text-meta text-ink-soft">{labels[r.rule]}</span>
-          </span>
-          <Toggle
-            on={r.on}
-            label={`${r.name} recurring`}
-            onChange={(v) => setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, on: v } : x)))}
+    <div>
+      <ul className="divide-y divide-line">
+        {data.map((r) => (
+          <li key={r.id} className="flex items-center justify-between py-3">
+            <span className="flex flex-col">
+              <span className="text-item text-ink">{r.name}</span>
+              <span className="text-meta text-ink-soft">{RULE_LABELS[r.recurrence_rule] ?? r.recurrence_rule}</span>
+            </span>
+            <div className="flex items-center gap-3">
+              <Toggle
+                on={r.active}
+                label={`${r.name} recurring`}
+                onChange={async (v) => {
+                  setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, active: v } : x)));
+                  if (live) await setRecurringActive(r.id, v);
+                }}
+              />
+              {live && (
+                <button
+                  aria-label={`Delete ${r.name}`}
+                  onClick={async () => {
+                    setRows((rs) => rs.filter((x) => x.id !== r.id));
+                    await deleteRecurring(r.id);
+                  }}
+                  className="text-ink-faint hover:text-bin"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {live && (
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="Add a routine item…"
+            maxLength={80}
+            className="min-w-0 flex-1 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink"
           />
-        </li>
-      ))}
-    </ul>
+          <select
+            value={newRule}
+            onChange={(e) => setNewRule(e.target.value)}
+            className="rounded-xs border border-line bg-surface-2 px-2 py-2 text-meta text-ink"
+          >
+            {Object.entries(RULE_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+          <button onClick={add} className="min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
+            Add
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

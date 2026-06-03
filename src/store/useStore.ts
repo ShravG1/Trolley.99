@@ -4,6 +4,7 @@ import type { AisleKey } from '@/lib/aisles';
 import { guessAisle, normaliseName } from '@/lib/categorise';
 import { seedItems, seedMembers, seedTrip, CURRENT_USER } from './seed';
 import type { RemoteWriter } from './remote';
+import { shouldNudge } from '@/lib/push';
 
 // -----------------------------------------------------------------------------
 // Client state + optimistic layer (§6.3).
@@ -32,6 +33,9 @@ interface StoreState {
   items: Item[];
   toasts: Toast[];
   multiAddCount: number;
+  /** Show the contextual "turn on notifications?" nudge (§2.10). */
+  pushNudge: boolean;
+  setPushNudge: (v: boolean) => void;
 
   /** Installed by the Supabase sync layer; null in demo mode (§6.3). */
   remote: RemoteWriter | null;
@@ -65,6 +69,7 @@ interface StoreState {
   startShopping: (windowMinutes: number | null) => boolean;
   cancelShopping: () => void;
   finishTrip: () => void;
+  takeOverShopping: () => void;
 
   // toasts
   pushToast: (message: string, undo?: () => void) => void;
@@ -83,7 +88,12 @@ export const useStore = create<StoreState>((set, get) => ({
   items: seedItems,
   toasts: [],
   multiAddCount: 0,
+  pushNudge: false,
   remote: null,
+
+  setPushNudge(v) {
+    set({ pushNudge: v });
+  },
 
   setRemote(remote) {
     set({ remote });
@@ -160,6 +170,11 @@ export const useStore = create<StoreState>((set, get) => ({
     // Remote insert; the writer fans out push (urgent → named; normal → debounced
     // count; never self — §2.10) after the row lands.
     get().remote?.insertItem(item);
+    // Contextual moment to offer notifications: just after a first urgent item,
+    // and only when there's actually a backend + others to notify (§2.10).
+    if (urgent && get().remote && get().members.length > 1 && shouldNudge()) {
+      set({ pushNudge: true });
+    }
   },
 
   setQuantity(id, quantity) {
@@ -273,6 +288,18 @@ export const useStore = create<StoreState>((set, get) => ({
     // trip back to active and toasts "someone's already shopping" (§7.1).
     get().remote?.startShopping(trip.id, windowMinutes);
     return true;
+  },
+
+  takeOverShopping() {
+    // Reclaim an abandoned shop (§2.6). Server enforces the 90-min staleness
+    // rule atomically; here we optimistically become the shopper.
+    const { trip, userId, members } = get();
+    if (trip.status !== 'shopping') return;
+    const me = members.find((m) => m.user_id === userId);
+    set({
+      trip: { ...trip, shopper_id: userId, shopper_name: me?.display_name ?? 'You', started_at: now() },
+    });
+    get().remote?.takeOverShopping(trip.id);
   },
 
   cancelShopping() {

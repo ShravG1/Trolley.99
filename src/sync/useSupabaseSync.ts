@@ -318,6 +318,16 @@ function installWriter(reload: () => Promise<void>) {
         await reload(); // pulls the fresh active trip + rolled-over items
       })();
     },
+
+    takeOverShopping(tripId) {
+      void (async () => {
+        const { data, error } = await sb.rpc('take_over_shopping', { p_trip_id: tripId });
+        if (error || !data) {
+          useStore.getState().pushToast('Couldn’t take over — they may still be at it.');
+        }
+        await reload();
+      })();
+    },
   };
 
   useStore.getState().setRemote(writer);

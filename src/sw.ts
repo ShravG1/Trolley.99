@@ -1,0 +1,51 @@
+/// <reference lib="webworker" />
+// Custom service worker (injectManifest strategy). Excluded from `tsc -b`
+// (tsconfig.app.json) — vite-plugin-pwa bundles it at build time — so its
+// webworker globals don't clash with the app's DOM lib.
+//
+// Responsibilities: precache the app shell (offline), apply updates on demand
+// (the "New version — refresh" prompt), and handle Web Push (§2.10):
+// show the notification and focus/open the app when tapped.
+import { precacheAndRoute } from 'workbox-precaching';
+
+declare const self: ServiceWorkerGlobalScope & {
+  __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
+};
+
+precacheAndRoute(self.__WB_MANIFEST);
+
+// Apply a waiting update when the client confirms the refresh prompt (§8.3).
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  if ((event.data as { type?: string })?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+// Incoming push → show the notification (urgent named / normal count, §2.10).
+self.addEventListener('push', (event: PushEvent) => {
+  let payload: { title?: string; body?: string } = {};
+  try {
+    payload = event.data?.json() ?? {};
+  } catch {
+    payload = { body: event.data?.text() };
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title ?? 'Trolley', {
+      body: payload.body ?? 'New activity on the list.',
+      icon: '/pwa-192.png',
+      badge: '/pwa-192.png',
+      tag: 'trolley-list', // collapse rapid notifications into one
+    })
+  );
+});
+
+// Tap a notification → focus the open app or open it (§2.10).
+self.addEventListener('notificationclick', (event: NotificationEvent) => {
+  event.notification.close();
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const open = clients.find((c) => 'focus' in c);
+      if (open) return (open as WindowClient).focus();
+      return self.clients.openWindow('/');
+    })()
+  );
+});
