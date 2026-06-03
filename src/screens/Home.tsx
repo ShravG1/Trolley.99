@@ -32,6 +32,7 @@ export function Home() {
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [startOpen, setStartOpen] = useState(false);
+  const [finishConfirm, setFinishConfirm] = useState(false);
   // Re-evaluate staleness on a timer so "Take over" / "Still shopping?" appear
   // without needing a manual refresh (§2.6).
   const [, setClock] = useState(0);
@@ -43,6 +44,7 @@ export function Home() {
   const { total, done } = counts(items);
   const others = members.filter((m) => m.user_id !== userId);
   const stale = isShopStale(trip, lastActivity(trip, items), Date.now());
+  const unbought = items.filter((i) => i.status === 'pending' || i.status === 'not_found').length;
 
   const windowOpen = trip.lastminute_until ? new Date(trip.lastminute_until).getTime() > Date.now() : false;
   // Spectators (and the shopper's helpers) can only add while the window is open (§7.2).
@@ -131,11 +133,11 @@ export function Home() {
                 Cancel
               </PrimaryPill>
               <PrimaryPill
-                onClick={() =>
-                  withViewTransition(() => {
-                    finishTrip();
-                  })
-                }
+                onClick={() => {
+                  // Be smart: only ask if there's something un-ticked to lose.
+                  if (unbought > 0) setFinishConfirm(true);
+                  else withViewTransition(finishTrip);
+                }}
               >
                 Finish the trip
               </PrimaryPill>
@@ -162,6 +164,37 @@ export function Home() {
       <AddSheet open={addOpen} onClose={() => setAddOpen(false)} />
       <ItemSheet item={editItem} onClose={() => setEditItem(null)} />
       <StartShoppingSheet open={startOpen} onClose={() => setStartOpen(false)} />
+
+      {/* Smart finish confirmation — only when there's something un-ticked to lose */}
+      {finishConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
+          <button aria-label="Keep shopping" className="absolute inset-0 bg-black/40" onClick={() => setFinishConfirm(false)} />
+          <div className="relative w-full max-w-md rounded-t-lg bg-surface p-5 shadow-e3 pb-[max(20px,env(safe-area-inset-bottom))]">
+            <h2 className="font-display text-display-s text-ink">Finish with {unbought} un-ticked?</h2>
+            <p className="mt-2 text-body text-ink-soft">
+              {done > 0 ? `${done} ticked off. ` : ''}
+              The {unbought === 1 ? 'one you haven’t' : `${unbought} you haven’t`} ticked will roll over to the next list, so nothing’s lost.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => setFinishConfirm(false)}
+                className="min-h-12 flex-1 rounded-pill border border-line font-semibold text-ink"
+              >
+                Keep shopping
+              </button>
+              <button
+                onClick={() => {
+                  setFinishConfirm(false);
+                  withViewTransition(finishTrip);
+                }}
+                className="min-h-12 flex-1 rounded-pill bg-brand font-semibold text-on-brand"
+              >
+                Finish anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

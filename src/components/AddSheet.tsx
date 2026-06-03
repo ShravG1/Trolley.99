@@ -68,15 +68,27 @@ export function AddSheet({ open, onClose }: Props) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Add to the list">
       <div className="flex flex-col gap-4">
-        <input
-          data-autofocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && commit()}
-          placeholder="Add something…"
-          maxLength={80}
-          className="w-full rounded-xs border border-line bg-surface-2 px-4 py-3 text-item text-ink placeholder:text-ink-faint focus:border-brand"
-        />
+        <div className="relative">
+          <input
+            data-autofocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && commit()}
+            placeholder="Add something…"
+            maxLength={80}
+            className="w-full rounded-xs border border-line bg-surface-2 py-3 pl-4 pr-11 text-item text-ink placeholder:text-ink-faint focus:border-brand"
+          />
+          {name && (
+            <button
+              type="button"
+              aria-label="Clear"
+              onClick={() => setName('')}
+              className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-pill text-ink-faint hover:bg-surface hover:text-ink"
+            >
+              ✕
+            </button>
+          )}
+        </div>
 
         {/* Type-ahead chips, most-frequent first */}
         <div className="flex flex-wrap gap-2">
@@ -92,38 +104,43 @@ export function AddSheet({ open, onClose }: Props) {
         </div>
 
         <div className="flex items-center justify-between">
-          {/* Editable aisle tag (§2.4) */}
-          <div className="relative">
-            <button
-              onClick={() => setAisleOpen((o) => !o)}
-              className="flex items-center gap-2 rounded-pill border border-line px-3 py-2 text-meta font-semibold"
-              style={{ color: aisleColor(aisle) }}
-            >
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: aisleColor(aisle) }} />
-              {AISLES[aisle].label}
-              <span className="text-ink-faint">▾</span>
-            </button>
-            {aisleOpen && (
-              <div className="absolute bottom-full z-10 mb-2 max-h-64 w-56 overflow-auto rounded-md border border-line bg-surface p-1 shadow-e2">
-                {AISLE_ORDER.map((key) => (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      setAisle(key);
-                      setAisleOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2 rounded-xs px-3 py-2 text-left text-meta text-ink hover:bg-surface-2"
-                  >
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: aisleColor(key) }} />
-                    {AISLES[key].label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Editable aisle tag (§2.4) — taps to reveal an inline chip grid. */}
+          <button
+            onClick={() => setAisleOpen((o) => !o)}
+            className="flex items-center gap-2 rounded-pill border border-line px-3 py-2 text-meta font-semibold"
+            style={{ color: aisleColor(aisle) }}
+          >
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: aisleColor(aisle) }} />
+            {AISLES[aisle].label}
+            <span className="text-ink-faint">{aisleOpen ? '▴' : '▾'}</span>
+          </button>
 
           <QtyStepper value={qty} onChange={setQty} size="sm" />
         </div>
+
+        {aisleOpen && (
+          <div className="flex flex-wrap gap-2">
+            {AISLE_ORDER.map((key) => {
+              const active = key === aisle;
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setAisle(key);
+                    setAisleOpen(false);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-meta ${
+                    active ? 'border-transparent text-white' : 'border-line text-ink'
+                  }`}
+                  style={active ? { backgroundColor: aisleColor(key) } : undefined}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: aisleColor(key) }} />
+                  {AISLES[key].label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Urgent toggle */}
         <label className="flex items-center justify-between rounded-md bg-surface-2 px-4 py-3">

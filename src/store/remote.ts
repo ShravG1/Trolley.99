@@ -15,4 +15,6 @@ export interface RemoteWriter {
   cancelShopping(tripId: string): void;
   completeTrip(tripId: string): void;
   takeOverShopping(tripId: string): void;
+  /** Notify an item's owner that it was binned / not found (§2.10). */
+  notify(kind: 'binned' | 'not_found', ownerId: string, itemName: string, actorName: string): void;
 }

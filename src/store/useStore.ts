@@ -230,8 +230,9 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   markNotFound(id) {
-    const { userId, members } = get();
+    const { userId, members, items } = get();
     const me = members.find((m) => m.user_id === userId);
+    const item = items.find((i) => i.id === id);
     const patch: Partial<Item> = {
       status: 'not_found',
       acted_by: userId,
@@ -240,6 +241,10 @@ export const useStore = create<StoreState>((set, get) => ({
     };
     set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
     get().remote?.patchItem(id, patch);
+    // Ping the person who added it (not yourself) that it couldn't be found.
+    if (item && item.added_by !== userId) {
+      get().remote?.notify('not_found', item.added_by, item.name, me?.display_name ?? 'Someone');
+    }
   },
 
   deleteItem(id) {
@@ -255,6 +260,10 @@ export const useStore = create<StoreState>((set, get) => ({
     };
     set({ items: items.map((i) => (i.id === id ? { ...i, ...patch } : i)) });
     get().remote?.patchItem(id, patch);
+    // Ping the person who added it (not yourself) that you binned it.
+    if (item.added_by !== userId) {
+      get().remote?.notify('binned', item.added_by, item.name, me?.display_name ?? 'Someone');
+    }
     get().pushToast(`Binned ${item.name}. Undo?`, () => get().restoreItem(id));
   },
 
@@ -314,8 +323,9 @@ export const useStore = create<StoreState>((set, get) => ({
   finishTrip() {
     const { trip, items, remote } = get();
     const bought = items.filter((i) => i.status === 'bought' || i.status === 'substituted').length;
-    const notFound = items.filter((i) => i.status === 'not_found');
-    const rolled = notFound.length;
+    // Roll over everything not bought (un-ticked + not-found) so nothing is lost.
+    const carry = items.filter((i) => i.status === 'pending' || i.status === 'not_found');
+    const rolled = carry.length;
 
     // In Supabase mode the server owns the completion transaction (§7.4): it
     // creates the fresh active trip and rolls items with real ids, then the sync
@@ -326,9 +336,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return;
     }
 
-    // SERVER: inside the completion transaction guarded by `where status='shopping'`
-    // (§7.4) — complete this trip, create a fresh active trip, roll over not-found
-    // items with bumped attempt_count, then rebuild the hot list.
+    // Demo: mirror the server — fresh active trip + roll over un-bought items.
     const newTrip: Trip = {
       id: uid(),
       group_id: trip.group_id,
@@ -339,12 +347,12 @@ export const useStore = create<StoreState>((set, get) => ({
       started_at: null,
       completed_at: null,
     };
-    const rolledItems: Item[] = notFound.map((i) => ({
+    const rolledItems: Item[] = carry.map((i) => ({
       ...i,
       id: uid(),
       trip_id: newTrip.id,
       status: 'pending' as ItemStatus,
-      attempt_count: i.attempt_count + 1,
+      attempt_count: i.attempt_count + (i.status === 'not_found' ? 1 : 0),
       acted_by: null,
       acted_by_name: null,
       acted_at: null,

@@ -49,8 +49,11 @@ describe('shopper-claim race (§7.1)', () => {
 
 describe('finishTrip rollover (§7.4)', () => {
   it('rolls not-found items into a fresh active trip with a bumped attempt count', () => {
-    const id = useStore.getState().items[0].id;
-    useStore.getState().markNotFound(id);
+    const all = useStore.getState().items;
+    const notFoundId = all[0].id;
+    // buy everything except one not-found item, so only that one carries over
+    all.forEach((i) => (i.id === notFoundId ? null : useStore.getState().markBought(i.id)));
+    useStore.getState().markNotFound(notFoundId);
     const oldTripId = useStore.getState().trip.id;
 
     useStore.getState().finishTrip();
@@ -58,10 +61,19 @@ describe('finishTrip rollover (§7.4)', () => {
     const { trip, items } = useStore.getState();
     expect(trip.status).toBe('active');
     expect(trip.id).not.toBe(oldTripId);
-    expect(items.length).toBe(1); // only the rolled-over not-found item
+    expect(items.length).toBe(1); // only the not-found item rolled over
     expect(items[0].status).toBe('pending');
-    expect(items[0].attempt_count).toBe(2);
+    expect(items[0].attempt_count).toBe(2); // not-found bumps the counter
     expect(items[0].trip_id).toBe(trip.id);
+  });
+
+  it('un-ticked (pending) items roll over too — nothing is silently lost', () => {
+    const total = useStore.getState().items.length; // all seed items are pending
+    useStore.getState().finishTrip();
+    const items = useStore.getState().items;
+    expect(items.length).toBe(total); // every un-ticked item carried over
+    expect(items.every((i) => i.status === 'pending')).toBe(true);
+    expect(items.every((i) => i.attempt_count === 1)).toBe(true); // pending doesn't bump
   });
 
   it('bought items do not roll over', () => {

@@ -354,6 +354,16 @@ function installWriter(reload: () => Promise<void>) {
         await reload();
       })();
     },
+
+    notify(kind, ownerId, itemName, actorName) {
+      void sb.functions
+        .invoke('send-push', {
+          body: { groupId: groupIdOf(), kind, item: itemName, actorName, targetUserId: ownerId },
+        })
+        .catch(() => {
+          /* best-effort; never block the UI */
+        });
+    },
   };
 
   useStore.getState().setRemote(writer);

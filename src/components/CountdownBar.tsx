@@ -36,8 +36,10 @@ export function CountdownBar({ until, onClose }: Props) {
 
   if (remaining <= 0) return null;
 
+  // Opaque banner with its own background + divider so it never merges into the
+  // screen header sitting just below it.
   return (
-    <div className="sticky top-0 z-20">
+    <div className="sticky top-0 z-20 border-b border-line bg-bg">
       <div className="h-1.5 w-full bg-surface-2">
         <div
           className="h-full transition-[width] duration-1000 ease-linear"
@@ -45,7 +47,7 @@ export function CountdownBar({ until, onClose }: Props) {
         />
       </div>
       <div
-        className={`px-4 py-1.5 text-center text-meta font-semibold ${closing ? 'text-urgent' : 'text-ink-soft'}`}
+        className={`px-4 py-2 text-center text-meta font-semibold ${closing ? 'text-urgent' : 'text-ink-soft'}`}
         aria-live="polite"
       >
         {closing ? '1 min left to add things.' : `Last-minute window open — ${format(remaining)} left.`}

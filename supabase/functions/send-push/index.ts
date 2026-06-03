@@ -28,9 +28,13 @@ const MIN_GAP_MS = 4000;
 
 interface Payload {
   groupId: string;
-  kind: 'urgent' | 'count';
+  // urgent/count → broadcast to the group (minus the sender).
+  // binned/not_found → notify only the item's owner (targetUserId).
+  kind: 'urgent' | 'count' | 'binned' | 'not_found';
   item?: string;
   count?: number;
+  actorName?: string;
+  targetUserId?: string;
 }
 
 Deno.serve(async (req) => {
@@ -58,21 +62,41 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (!membership) return json({ error: 'not_a_member' }, 403);
 
-  // rate cap
-  const now = Date.now();
-  if (now - (lastSent.get(body.groupId) ?? 0) < MIN_GAP_MS && body.kind !== 'urgent') {
-    return json({ ok: true, skipped: 'rate_limited' });
+  // rate cap — only the debounced "count" broadcast; urgent + targeted
+  // (binned/not_found) always go through.
+  if (body.kind === 'count') {
+    const now = Date.now();
+    if (now - (lastSent.get(body.groupId) ?? 0) < MIN_GAP_MS) {
+      return json({ ok: true, skipped: 'rate_limited' });
+    }
+    lastSent.set(body.groupId, now);
   }
-  lastSent.set(body.groupId, now);
 
-  // 3) Read the group's subscriptions — EXCLUDING the person who triggered it
-  //    (the adder is never notified, §2.10).
-  const { data: members } = await admin
-    .from('group_members')
-    .select('user_id')
-    .eq('group_id', body.groupId)
-    .neq('user_id', caller.id);
-  const userIds = (members ?? []).map((m: any) => m.user_id);
+  // 3) Work out the recipients + message.
+  const targeted = body.kind === 'binned' || body.kind === 'not_found';
+  let userIds: string[];
+  if (targeted) {
+    // Notify only the item's owner — and never the person who did the action.
+    if (!body.targetUserId || body.targetUserId === caller.id) {
+      return json({ ok: true, recipients: 0 });
+    }
+    const { data: target } = await admin
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', body.groupId)
+      .eq('user_id', body.targetUserId)
+      .maybeSingle();
+    if (!target) return json({ ok: true, recipients: 0 }); // owner left the group
+    userIds = [body.targetUserId];
+  } else {
+    // Broadcast to everyone but the sender (§2.10).
+    const { data: members } = await admin
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', body.groupId)
+      .neq('user_id', caller.id);
+    userIds = (members ?? []).map((m: any) => m.user_id);
+  }
   if (userIds.length === 0) return json({ ok: true, recipients: 0 }); // solo group (§12)
 
   const { data: subs } = await admin
@@ -80,11 +104,16 @@ Deno.serve(async (req) => {
     .select('user_id, endpoint, keys')
     .in('user_id', userIds);
 
+  const who = body.actorName ?? 'Someone';
   const title = 'Trolley';
   const message =
     body.kind === 'urgent'
       ? `Urgent: ${body.item} added to the list.`
-      : `${body.count ?? 1} new items on the list.`;
+      : body.kind === 'binned'
+        ? `${who} binned your ${body.item}.`
+        : body.kind === 'not_found'
+          ? `${who} couldn’t find your ${body.item}.`
+          : `${body.count ?? 1} new items on the list.`;
 
   let sent = 0;
   const dead: string[] = [];

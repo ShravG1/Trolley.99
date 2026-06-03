@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   open: boolean;
@@ -8,11 +8,19 @@ interface Props {
 }
 
 // Bottom sheet (§3) — --r-lg, drag-affordance grabber, focus managed, Escape to
-// close, backdrop tap to dismiss. Focus is trapped lightly via initial focus +
-// returning focus on close (§1.8).
+// close, backdrop tap to dismiss (§1.8).
+//
+// Keyboard-safe: the sheet is sized/positioned to the VISUAL viewport (via the
+// VisualViewport API) so when the mobile keyboard opens it sits fully above it —
+// the primary action never ends up hidden behind the keyboard. Content scrolls
+// internally if it's taller than the visible area.
 export function BottomSheet({ open, onClose, title, children }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  const [vv, setVv] = useState<{ h: number; top: number }>(() => ({
+    h: typeof window !== 'undefined' ? window.innerHeight : 0,
+    top: 0,
+  }));
 
   useEffect(() => {
     if (!open) return;
@@ -24,9 +32,19 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
+
+    // Track the visual viewport so the sheet follows the keyboard.
+    const v = window.visualViewport;
+    const update = () => v && setVv({ h: v.height, top: v.offsetTop });
+    update();
+    v?.addEventListener('resize', update);
+    v?.addEventListener('scroll', update);
+
     return () => {
       clearTimeout(t);
       window.removeEventListener('keydown', onKey);
+      v?.removeEventListener('resize', update);
+      v?.removeEventListener('scroll', update);
       previouslyFocused.current?.focus?.();
     };
   }, [open, onClose]);
@@ -35,29 +53,32 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-x-0 z-50 flex items-end justify-center"
+      style={{ top: vv.top, height: vv.h || undefined }}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
       <button
         aria-label="Close"
-        className="absolute inset-0 bg-black/40 motion-safe:animate-[urgent-flash_0.001ms]"
+        className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
       <div
         ref={ref}
-        className="relative w-full max-w-md rounded-t-lg bg-surface shadow-e3 pb-[max(16px,env(safe-area-inset-bottom))]
-                   motion-safe:transition-transform motion-safe:duration-considered"
+        className="relative flex max-h-full w-full max-w-md flex-col rounded-t-lg bg-surface shadow-e3"
         style={{ animation: 'item-land 240ms var(--ease-out)' }}
       >
-        <div className="flex justify-center pt-3">
-          <span className="h-1.5 w-10 rounded-pill bg-line" />
+        <div className="shrink-0 pt-3">
+          <div className="flex justify-center">
+            <span className="h-1.5 w-10 rounded-pill bg-line" />
+          </div>
+          {title && <h2 className="px-5 pt-3 font-display text-display-s text-ink">{title}</h2>}
         </div>
-        {title && (
-          <h2 className="px-5 pt-3 font-display text-display-s text-ink">{title}</h2>
-        )}
-        <div className="px-5 pb-5 pt-3">{children}</div>
+        {/* Scrolls internally so nothing (e.g. the Add button) is ever clipped. */}
+        <div className="overflow-y-auto px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-3">
+          {children}
+        </div>
       </div>
     </div>
   );
