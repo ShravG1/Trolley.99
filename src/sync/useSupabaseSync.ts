@@ -87,18 +87,24 @@ export function useSupabaseSync(): Sync {
       // users can be pruned). If it's gone, drop it so the anon-sign-in effect
       // mints a fresh one — otherwise reads look empty and writes FK-error.
       if (data.session) {
+        // Only re-auth on a definitive 403 (user gone) — not on a network blip,
+        // which would wrongly drop a valid session and its group.
         const { error } = await sb.auth.getUser();
-        if (error) {
+        if (error && (error as { status?: number }).status === 403) {
           await sb.auth.signOut();
           setSession(null);
           setAuthChecked(true);
           return;
         }
       }
+      // Keep Realtime authorised so RLS-filtered postgres_changes actually deliver
+      // (otherwise the anon role can't SELECT and live sync goes silent).
+      if (data.session) sb.realtime.setAuth(data.session.access_token);
       setSession(data.session);
       setAuthChecked(true);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      if (s) sb.realtime.setAuth(s.access_token);
       setSession(s);
       setAuthChecked(true);
       setAnonymousFlag(s?.user?.is_anonymous ?? true);
@@ -212,13 +218,20 @@ export function useSupabaseSync(): Sync {
       if (!cancelled) setStatus('ready');
     })();
 
-    // Re-fetch on reconnect to catch events missed during a drop (§6.4).
+    // Re-fetch on reconnect, and whenever the app comes back to the foreground —
+    // mobile drops the Realtime socket in the background, so this keeps the list
+    // fresh even if a live event was missed (§6.4).
     const onOnline = () => void reload();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void reload();
+    };
     window.addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       cancelled = true;
       window.removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
       itemsChannel.current?.unsubscribe();
       tripsChannel.current?.unsubscribe();
       itemsChannel.current = null;

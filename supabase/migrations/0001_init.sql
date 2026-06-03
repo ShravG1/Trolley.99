@@ -290,7 +290,7 @@ begin
   select string_agg(substr(v_alphabet, 1 + floor(random() * length(v_alphabet))::int, 1), '')
     into v_code
     from generate_series(1, 8);
-  v_token := encode(gen_random_bytes(24), 'hex');
+  v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
   insert into invites (group_id, code, token, expires_at, created_by)
     values (p_group_id, v_code, v_token, v_expires, auth.uid());
   return query select v_code, v_token, v_expires;

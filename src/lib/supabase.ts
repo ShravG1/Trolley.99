@@ -89,11 +89,11 @@ export async function ensureSession(): Promise<void> {
   if (!supabase) return;
   const { data } = await supabase.auth.getSession();
   if (data.session) {
-    // getSession() only reads local storage — validate the user still exists on
-    // the server (anonymous users can be pruned), else the next write hits a
-    // foreign-key error. getUser() round-trips and errors if the user is gone.
+    // Validate the user still exists, but ONLY drop the session on a definitive
+    // 403 (user genuinely gone) — never on a transient network error, or we'd
+    // wrongly sign a valid user out and lose their group.
     const { error } = await supabase.auth.getUser();
-    if (!error) return;
+    if (!error || (error as { status?: number }).status !== 403) return;
     await supabase.auth.signOut();
   }
   const { error } = await supabase.auth.signInAnonymously();

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 // Reporting (§2.9) — settings-gated, lazy-loaded (code-split, §10) so JetBrains
 // Mono and this route stay out of the initial bundle. Framed as fun, not
@@ -16,8 +17,9 @@ export default function Reporting() {
   const members = useStore((s) => s.members);
   const [range, setRange] = useState<Range>('month');
 
-  // Demo tally from current items by acted_by_name (real version reads completed
-  // trips server-side).
+  // Tally bought items by member. Real groups start empty (a fuller version reads
+  // completed-trip aggregates server-side, §2.9). The demo seed only fills the
+  // bars in offline demo mode — never for real users.
   const tally = useMemo(() => {
     const counts = new Map<string, number>();
     for (const m of members) counts.set(m.display_name, 0);
@@ -26,12 +28,15 @@ export default function Reporting() {
         counts.set(i.acted_by_name, (counts.get(i.acted_by_name) ?? 0) + 1);
       }
     }
-    // a little demo seed so the bars aren't empty
-    counts.set('Mum', (counts.get('Mum') ?? 0) + 24);
-    counts.set('Shrav', (counts.get('Shrav') ?? 0) + 12);
-    counts.set('Dad', (counts.get('Dad') ?? 0) + 7);
+    if (!isSupabaseConfigured()) {
+      counts.set('Mum', (counts.get('Mum') ?? 0) + 24);
+      counts.set('Shrav', (counts.get('Shrav') ?? 0) + 12);
+      counts.set('Dad', (counts.get('Dad') ?? 0) + 7);
+    }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [items, members]);
+
+  const hasData = tally.some(([, n]) => n > 0);
 
   const max = Math.max(1, ...tally.map(([, n]) => n));
   const mvp = tally[0];
@@ -58,25 +63,32 @@ export default function Reporting() {
         />
       </div>
 
-      {mvp && (
-        <p className="mb-6 font-body text-body text-ink-soft">
-          This month’s MVP: <span className="font-semibold text-ink">{mvp[0]}</span>. {mvp[1]} items. Show-off.
+      {!hasData ? (
+        <p className="mt-10 text-center font-body text-body text-ink-soft">
+          Nothing to show yet — finish a shop and the leaderboard fills in.
         </p>
+      ) : (
+        <>
+          {mvp && (
+            <p className="mb-6 font-body text-body text-ink-soft">
+              This month’s MVP: <span className="font-semibold text-ink">{mvp[0]}</span>. {mvp[1]} items. Show-off.
+            </p>
+          )}
+          <ul className="space-y-4">
+            {tally.map(([name, n]) => (
+              <li key={name}>
+                <div className="mb-1 flex items-baseline justify-between">
+                  <span className="font-body text-item text-ink">{name}</span>
+                  <span className="text-stat font-semibold tabular-nums text-ink">{n}</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-pill bg-surface-2">
+                  <div className="h-full rounded-pill bg-brand" style={{ width: `${(n / max) * 100}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-
-      <ul className="space-y-4">
-        {tally.map(([name, n]) => (
-          <li key={name}>
-            <div className="mb-1 flex items-baseline justify-between">
-              <span className="font-body text-item text-ink">{name}</span>
-              <span className="text-stat font-semibold tabular-nums text-ink">{n}</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-pill bg-surface-2">
-              <div className="h-full rounded-pill bg-brand" style={{ width: `${(n / max) * 100}%` }} />
-            </div>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

@@ -40,6 +40,15 @@ export function Settings() {
     }
   }
 
+  async function share() {
+    if (!inviteLink) return;
+    try {
+      await navigator.share({ title: 'Join my Trolley list', text: 'Join my shopping list on Trolley:', url: inviteLink });
+    } catch {
+      /* user cancelled or unsupported — Copy is the fallback */
+    }
+  }
+
   async function copy() {
     if (!inviteLink) return;
     try {
@@ -64,11 +73,18 @@ export function Settings() {
       <Section title="Add people">
         <p className="mb-3 text-body text-ink-soft">Send this to whoever’s doing the shopping with you.</p>
         {inviteLink ? (
-          <div className="flex items-center gap-2">
-            <code className="flex-1 truncate rounded-xs bg-surface-2 px-3 py-2 text-meta text-ink">{inviteLink}</code>
-            <button onClick={copy} className="min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
-              {copied ? 'Copied' : 'Copy link'}
-            </button>
+          <div className="space-y-2">
+            <code className="block truncate rounded-xs bg-surface-2 px-3 py-2 text-meta text-ink">{inviteLink}</code>
+            <div className="flex gap-2">
+              {'share' in navigator && (
+                <button onClick={share} className="min-h-11 flex-1 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
+                  Share link
+                </button>
+              )}
+              <button onClick={copy} className="min-h-11 flex-1 rounded-pill border border-line px-4 text-meta font-semibold text-ink">
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
           </div>
         ) : (
           <button
