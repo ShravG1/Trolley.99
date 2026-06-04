@@ -326,7 +326,16 @@ function installWriter(reload: () => Promise<void>) {
         if (error || !data) {
           useStore.getState().pushToast('Someone’s already shopping.');
           await reload();
+          return;
         }
+        // Tell the group someone's gone shopping (§2.6, §2.10).
+        const me = useStore.getState();
+        const name = me.members.find((m) => m.user_id === me.userId)?.display_name ?? 'Someone';
+        sb.functions
+          .invoke('send-push', {
+            body: { groupId: groupIdOf(), kind: 'shopping', actorName: name, minutes: minutes ?? 0 },
+          })
+          .catch(() => {});
       })();
     },
 

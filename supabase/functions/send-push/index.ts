@@ -28,11 +28,12 @@ const MIN_GAP_MS = 4000;
 
 interface Payload {
   groupId: string;
-  // urgent/count → broadcast to the group (minus the sender).
+  // urgent/count/shopping → broadcast to the group (minus the sender).
   // binned/not_found → notify only the item's owner (targetUserId).
-  kind: 'urgent' | 'count' | 'binned' | 'not_found';
+  kind: 'urgent' | 'count' | 'binned' | 'not_found' | 'shopping';
   item?: string;
   count?: number;
+  minutes?: number;
   actorName?: string;
   targetUserId?: string;
 }
@@ -113,7 +114,11 @@ Deno.serve(async (req) => {
         ? `${who} binned your ${body.item}.`
         : body.kind === 'not_found'
           ? `${who} couldn’t find your ${body.item}.`
-          : `${body.count ?? 1} new items on the list.`;
+          : body.kind === 'shopping'
+            ? body.minutes && body.minutes > 0
+              ? `${who}’s gone shopping. ${body.minutes} min to add anything last-minute.`
+              : `${who}’s gone shopping — list’s locking now.`
+            : `${body.count ?? 1} new items on the list.`;
 
   let sent = 0;
   const dead: string[] = [];

@@ -30,6 +30,7 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
   const startY = useRef<number | null>(null);
   const axisLocked = useRef<'x' | 'y' | null>(null);
   const swiping = useRef(false);
+  const rowRef = useRef<HTMLDivElement>(null);
 
   const done = item.status === 'bought' || item.status === 'substituted';
   const notFound = item.status === 'not_found';
@@ -67,10 +68,14 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
       return;
     }
     swiping.current = false;
+    // A full swipe LEFT deletes outright (with an Undo toast); a swipe RIGHT
+    // marks bought. Substitute / Not found live in the row's ⋯ menu (§2.3).
+    const width = rowRef.current?.offsetWidth ?? 320;
+    const deleteThreshold = Math.max(120, width * 0.45);
     if (dx > SWIPE_THRESHOLD && !done) {
-      onBought(item.id); // swipe right → bought (§2.3)
-    } else if (dx < -SWIPE_THRESHOLD) {
-      onMenu(item); // swipe left → menu (substitute / not found / delete)
+      onBought(item.id);
+    } else if (-dx > deleteThreshold) {
+      onDelete(item.id);
     }
     setDx(0);
     startX.current = null;
@@ -100,19 +105,28 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
       ? 'var(--sub-tint)'
       : aisleTint(item.category);
 
+  const willDelete = -dx > Math.max(120, (rowRef.current?.offsetWidth ?? 320) * 0.45);
+
   return (
     <div className="relative overflow-hidden" style={{ viewTransitionName: `item-${item.id}` }}>
-      {/* Swipe reveals (icon-led, never colour-only) */}
-      <div className="absolute inset-0 flex items-center justify-between px-5">
-        <span className="flex items-center gap-2 font-semibold text-on-brand" style={{ color: 'var(--brand)' }}>
+      {/* Swipe reveals (icon-led, never colour-only): right = Bought, full left = Delete */}
+      <div
+        className="absolute inset-0 flex items-center justify-between px-5"
+        style={{ backgroundColor: willDelete ? 'var(--bin)' : undefined }}
+      >
+        <span className="flex items-center gap-2 font-semibold" style={{ color: 'var(--brand)' }}>
           <BoughtIcon /> Bought
         </span>
-        <span className="flex items-center gap-2 font-semibold" style={{ color: 'var(--bin)' }}>
-          More <BinIcon />
+        <span
+          className="flex items-center gap-2 font-semibold"
+          style={{ color: willDelete ? 'var(--on-brand)' : 'var(--bin)' }}
+        >
+          {willDelete ? 'Release to delete' : 'Swipe to delete'} <BinIcon />
         </span>
       </div>
 
       <div
+        ref={rowRef}
         className={`relative flex items-center gap-3 border-b border-line px-4 ${collapsed}
           motion-safe:transition-[min-height,transform,opacity] motion-safe:duration-considered motion-safe:ease-out
           ${done ? 'opacity-50' : notFound ? 'opacity-70' : ''}`}
