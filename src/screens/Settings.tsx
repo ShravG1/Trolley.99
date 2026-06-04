@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { guessAisle } from '@/lib/categorise';
 import { enablePush, pushSupported, isInstalledPWA, isIOS } from '@/lib/push';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import {
   isSupabaseConfigured,
   createInvite,
@@ -12,6 +13,7 @@ import {
   addRecurring,
   setRecurringActive,
   deleteRecurring,
+  sendFeedback,
   type RecurringRow,
 } from '@/lib/supabase';
 
@@ -174,6 +176,11 @@ export function Settings() {
         )}
       </Section>
 
+      {/* Feedback / bug report */}
+      <Section title="Feedback">
+        <FeedbackForm groupId={groupId} />
+      </Section>
+
       {/* Archive + privacy */}
       <Section title="This trip">
         <Link to="/archive" className="flex items-center justify-between py-2 text-item text-ink">
@@ -309,6 +316,78 @@ function NotificationsControl() {
     );
   }
   return body as React.ReactElement;
+}
+
+// Feedback / bug report (§9). Lands in the feedback table for the owner to read.
+function FeedbackForm({ groupId }: { groupId: string }) {
+  const pushToast = useStore((s) => s.pushToast);
+  const [kind, setKind] = useState<'feedback' | 'bug'>('feedback');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  if (sent) {
+    return (
+      <p className="text-body text-ink-soft">
+        Got it — thank you. {kind === 'bug' ? 'We’ll take a look.' : 'Much appreciated.'}{' '}
+        <button onClick={() => { setSent(false); setMessage(''); }} className="font-semibold text-brand">
+          Send another
+        </button>
+      </p>
+    );
+  }
+
+  async function submit() {
+    if (!message.trim()) return;
+    if (!isSupabaseConfigured()) {
+      pushToast('Connect a backend to send feedback.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await sendFeedback(kind, message, groupId);
+      setSent(true);
+    } catch {
+      pushToast('Couldn’t send — give it another go.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="mb-3 text-body text-ink-soft">
+        Spot a bug or got an idea? Tell us — it comes straight to the team. (For a screenshot, grab one on
+        your phone and send it over too.)
+      </p>
+      <div className="mb-3">
+        <SegmentedControl
+          ariaLabel="Feedback type"
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'feedback', label: 'Idea / feedback' },
+            { value: 'bug', label: 'Something broke' },
+          ]}
+        />
+      </div>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder={kind === 'bug' ? 'What happened, and what were you doing?' : 'What’s on your mind?'}
+        maxLength={2000}
+        rows={4}
+        className="w-full resize-none rounded-md border border-line bg-surface-2 px-3 py-2 text-body text-ink placeholder:text-ink-faint focus:border-brand"
+      />
+      <button
+        onClick={submit}
+        disabled={busy || !message.trim()}
+        className="mt-2 min-h-11 rounded-pill bg-brand px-5 text-meta font-semibold text-on-brand disabled:opacity-40"
+      >
+        {busy ? 'Sending…' : 'Send'}
+      </button>
+    </div>
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

@@ -7,12 +7,17 @@
 // (the "New version — refresh" prompt), and handle Web Push (§2.10):
 // show the notification and focus/open the app when tapped.
 import { precacheAndRoute } from 'workbox-precaching';
+import { clientsClaim } from 'workbox-core';
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 };
 
 precacheAndRoute(self.__WB_MANIFEST);
+
+// Take control of open pages as soon as this SW activates, so the "Update now"
+// confirm can cleanly reload into the new version without a reinstall (§8.3).
+clientsClaim();
 
 // Apply a waiting update when the client confirms the refresh prompt (§8.3).
 self.addEventListener('message', (event: ExtendableMessageEvent) => {

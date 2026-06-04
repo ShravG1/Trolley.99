@@ -221,3 +221,21 @@ export async function deleteRecurring(id: string): Promise<void> {
   if (!supabase) return;
   await supabase.from('recurring_items').delete().eq('id', id);
 }
+
+/** Submit in-app feedback / a bug report (§9). Owner reads it server-side. */
+export async function sendFeedback(
+  kind: 'feedback' | 'bug',
+  message: string,
+  groupId?: string
+): Promise<void> {
+  if (!supabase) return;
+  const { data } = await supabase.auth.getUser();
+  const { error } = await supabase.from('feedback').insert({
+    user_id: data.user?.id ?? null,
+    group_id: groupId ?? null,
+    kind,
+    message: message.trim(),
+    user_agent: navigator.userAgent.slice(0, 300),
+  });
+  if (error) throw error;
+}
