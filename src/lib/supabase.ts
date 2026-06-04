@@ -222,20 +222,36 @@ export async function deleteRecurring(id: string): Promise<void> {
   await supabase.from('recurring_items').delete().eq('id', id);
 }
 
-/** Submit in-app feedback / a bug report (§9). Owner reads it server-side. */
+/** Submit in-app feedback / a bug report (§9), with an optional screenshot.
+ * Owner reads it server-side; the screenshot lands in the private 'feedback'
+ * bucket and the digest signs a URL for the GitHub issue. */
 export async function sendFeedback(
   kind: 'feedback' | 'bug',
   message: string,
-  groupId?: string
+  groupId?: string,
+  screenshot?: File | null
 ): Promise<void> {
   if (!supabase) return;
   const { data } = await supabase.auth.getUser();
+  const uid = data.user?.id ?? null;
+
+  let screenshot_path: string | null = null;
+  if (screenshot && uid) {
+    const ext = (screenshot.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const path = `${uid}/${crypto.randomUUID()}.${ext || 'png'}`;
+    const { error: upErr } = await supabase.storage
+      .from('feedback')
+      .upload(path, screenshot, { contentType: screenshot.type || 'image/png' });
+    if (!upErr) screenshot_path = path; // upload failure shouldn't block the text report
+  }
+
   const { error } = await supabase.from('feedback').insert({
-    user_id: data.user?.id ?? null,
+    user_id: uid,
     group_id: groupId ?? null,
     kind,
     message: message.trim(),
     user_agent: navigator.userAgent.slice(0, 300),
+    screenshot_path,
   });
   if (error) throw error;
 }

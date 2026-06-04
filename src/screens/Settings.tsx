@@ -323,6 +323,7 @@ function FeedbackForm({ groupId }: { groupId: string }) {
   const pushToast = useStore((s) => s.pushToast);
   const [kind, setKind] = useState<'feedback' | 'bug'>('feedback');
   const [message, setMessage] = useState('');
+  const [shot, setShot] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
 
@@ -330,7 +331,7 @@ function FeedbackForm({ groupId }: { groupId: string }) {
     return (
       <p className="text-body text-ink-soft">
         Got it — thank you. {kind === 'bug' ? 'We’ll take a look.' : 'Much appreciated.'}{' '}
-        <button onClick={() => { setSent(false); setMessage(''); }} className="font-semibold text-brand">
+        <button onClick={() => { setSent(false); setMessage(''); setShot(null); }} className="font-semibold text-brand">
           Send another
         </button>
       </p>
@@ -343,9 +344,13 @@ function FeedbackForm({ groupId }: { groupId: string }) {
       pushToast('Connect a backend to send feedback.');
       return;
     }
+    if (shot && shot.size > 5 * 1024 * 1024) {
+      pushToast('Screenshot’s a bit big — keep it under 5MB.');
+      return;
+    }
     setBusy(true);
     try {
-      await sendFeedback(kind, message, groupId);
+      await sendFeedback(kind, message, groupId, shot);
       setSent(true);
     } catch {
       pushToast('Couldn’t send — give it another go.');
@@ -357,8 +362,7 @@ function FeedbackForm({ groupId }: { groupId: string }) {
   return (
     <div>
       <p className="mb-3 text-body text-ink-soft">
-        Spot a bug or got an idea? Tell us — it comes straight to the team. (For a screenshot, grab one on
-        your phone and send it over too.)
+        Spot a bug or got an idea? Tell us — it comes straight to the team. You can attach a screenshot too.
       </p>
       <div className="mb-3">
         <SegmentedControl
@@ -379,10 +383,29 @@ function FeedbackForm({ groupId }: { groupId: string }) {
         rows={4}
         className="w-full resize-none rounded-md border border-line bg-surface-2 px-3 py-2 text-body text-ink placeholder:text-ink-faint focus:border-brand"
       />
+      <div className="mt-2 flex items-center gap-3">
+        <label className="min-h-11 cursor-pointer rounded-pill border border-line px-4 text-meta font-semibold leading-[44px] text-ink">
+          {shot ? 'Change screenshot' : 'Add screenshot'}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => setShot(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {shot && (
+          <span className="flex items-center gap-1 text-meta text-ink-soft">
+            <span className="max-w-[8rem] truncate">{shot.name}</span>
+            <button onClick={() => setShot(null)} aria-label="Remove screenshot" className="text-ink-faint hover:text-bin">
+              ✕
+            </button>
+          </span>
+        )}
+      </div>
       <button
         onClick={submit}
         disabled={busy || !message.trim()}
-        className="mt-2 min-h-11 rounded-pill bg-brand px-5 text-meta font-semibold text-on-brand disabled:opacity-40"
+        className="mt-3 min-h-11 rounded-pill bg-brand px-5 text-meta font-semibold text-on-brand disabled:opacity-40"
       >
         {busy ? 'Sending…' : 'Send'}
       </button>

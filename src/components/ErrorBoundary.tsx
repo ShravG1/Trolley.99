@@ -1,7 +1,8 @@
 import { Component, type ReactNode } from 'react';
+import { captureError } from '@/lib/errorLog';
 
-// Global error boundary (§9) — a render error doesn't white-screen mid-shop.
-// Wire your error tracker (e.g. Sentry) in componentDidCatch.
+// Global error boundary (§9) — a render error doesn't white-screen mid-shop, and
+// it's logged (in-house) so it reaches the feedback digest / Hub.
 export class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
 
@@ -9,9 +10,10 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { hasError
     return { hasError: true };
   }
 
-  componentDidCatch(error: unknown) {
-    // TODO: report to Sentry / error tracker (§9 observability)
+  componentDidCatch(error: unknown, info: { componentStack?: string }) {
+    const e = error as { message?: string; stack?: string };
     console.error('Trolley render error:', error);
+    void captureError(`Render crash: ${e?.message ?? String(error)}`, e?.stack || info?.componentStack);
   }
 
   render() {

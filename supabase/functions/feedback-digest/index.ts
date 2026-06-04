@@ -25,7 +25,7 @@ Deno.serve(async () => {
 
   const { data: rows } = await admin
     .from('feedback')
-    .select('id, kind, message, user_agent, created_at, group_id')
+    .select('id, kind, message, user_agent, created_at, group_id, screenshot_path')
     .is('pushed_at', null)
     .order('created_at', { ascending: true })
     .limit(50);
@@ -35,12 +35,28 @@ Deno.serve(async () => {
   let filed = 0;
   const failed: string[] = [];
   for (const r of rows as any[]) {
-    const isBug = r.kind === 'bug';
-    const title = `[Trolley ${isBug ? 'bug' : 'feedback'}] ${firstLine(r.message)}`;
+    const kind = r.kind === 'bug' ? 'bug' : r.kind === 'error' ? 'error' : 'feedback';
+    const meta = {
+      bug: { word: 'bug', emoji: '🐞 Bug report', labels: ['feedback', 'bug'] },
+      error: { word: 'error', emoji: '💥 Auto-captured error', labels: ['bug', 'error'] },
+      feedback: { word: 'feedback', emoji: '💡 Feedback', labels: ['feedback', 'idea'] },
+    }[kind];
+    const title = `[Trolley ${meta.word}] ${firstLine(r.message)}`;
+
+    // Sign a long-lived URL for any attached screenshot (private bucket).
+    let shotLine: string | null = null;
+    if (r.screenshot_path) {
+      const { data: signed } = await admin.storage
+        .from('feedback')
+        .createSignedUrl(r.screenshot_path, 60 * 60 * 24 * 365);
+      if (signed?.signedUrl) shotLine = `\n**Screenshot:** ${signed.signedUrl}\n\n![screenshot](${signed.signedUrl})`;
+    }
+
     const body = [
-      `**${isBug ? '🐞 Bug report' : '💡 Feedback'}** from the Trolley app`,
+      `**${meta.emoji}** from the Trolley app`,
       '',
       r.message,
+      shotLine,
       '',
       '---',
       `- Submitted: ${r.created_at}`,
@@ -59,7 +75,7 @@ Deno.serve(async () => {
         'Content-Type': 'application/json',
         'User-Agent': 'trolley-feedback-digest',
       },
-      body: JSON.stringify({ title, body, labels: ['feedback', isBug ? 'bug' : 'idea'] }),
+      body: JSON.stringify({ title, body, labels: meta.labels }),
     });
 
     if (res.ok) {
