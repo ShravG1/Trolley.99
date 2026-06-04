@@ -26,3 +26,24 @@ select cron.schedule(
     );
   $$
 );
+
+-- Feedback → GitHub digest (§9). Once a day, files un-pushed feedback as labelled
+-- GitHub issues (the function uses its GITHUB_PAT/GITHUB_REPO secrets). Same
+-- public-anon-key bearer pattern.
+select cron.unschedule('trolley-feedback-digest')
+  where exists (select 1 from cron.job where jobname = 'trolley-feedback-digest');
+
+select cron.schedule(
+  'trolley-feedback-digest',
+  '0 8 * * *', -- 08:00 UTC daily
+  $$
+    select net.http_post(
+      url := 'https://lztexunynwdrjjhcbgbi.supabase.co/functions/v1/feedback-digest',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6dGV4dW55bndkcmpqaGNiZ2JpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0Mjc3ODYsImV4cCI6MjA5NjAwMzc4Nn0.X6go87s4I8cjWFonEFpQ3IaTJGwUGB-nZl0RDoK1XUY'
+      ),
+      body := '{}'::jsonb
+    );
+  $$
+);
