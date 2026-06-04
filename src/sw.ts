@@ -26,7 +26,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 
 // Incoming push → show the notification (urgent named / normal count, §2.10).
 self.addEventListener('push', (event: PushEvent) => {
-  let payload: { title?: string; body?: string } = {};
+  let payload: { title?: string; body?: string; tag?: string } = {};
   try {
     payload = event.data?.json() ?? {};
   } catch {
@@ -37,8 +37,11 @@ self.addEventListener('push', (event: PushEvent) => {
       body: payload.body ?? 'New activity on the list.',
       icon: '/pwa-192.png',
       badge: '/pwa-192.png',
-      tag: 'trolley-list', // collapse rapid notifications into one
-    })
+      // Distinct events get distinct tags so they don't overwrite each other on
+      // the lock screen; renotify re-alerts even if a tag repeats (§2.10).
+      tag: payload.tag ?? `trolley-${Date.now()}`,
+      renotify: true,
+    } as NotificationOptions)
   );
 });
 

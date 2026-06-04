@@ -120,6 +120,9 @@ Deno.serve(async (req) => {
               : `${who}’s gone shopping — list’s locking now.`
             : `${body.count ?? 1} new items on the list.`;
 
+  // Only collapse the debounced "count" pushes; distinct events stay separate.
+  const tag = body.kind === 'count' ? 'trolley-count' : undefined;
+
   let sent = 0;
   const dead: string[] = [];
   await Promise.all(
@@ -127,7 +130,7 @@ Deno.serve(async (req) => {
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: s.keys },
-          JSON.stringify({ title, body: message })
+          JSON.stringify({ title, body: message, tag })
         );
         sent++;
       } catch (err: any) {
