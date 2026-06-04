@@ -173,7 +173,7 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
           <button
             onClick={() => (done ? onDelete(item.id) : onMenu(item))}
             aria-label="Item actions"
-            className="grid h-11 w-9 shrink-0 place-items-center text-ink-faint hover:text-ink"
+            className="grid h-11 w-11 shrink-0 place-items-center text-ink-faint hover:text-ink"
           >
             ⋯
           </button>

@@ -9,8 +9,9 @@ interface Props {
 // constraint, §7.5).
 export function QtyStepper({ value, onChange, size = 'md' }: Props) {
   const btn =
-    'flex items-center justify-center rounded-pill text-ink disabled:opacity-30 transition-colors hover:bg-surface-2';
-  const dim = size === 'sm' ? 'h-9 w-9' : 'h-11 w-11';
+    'flex items-center justify-center rounded-pill text-ink text-lg disabled:opacity-30 transition-colors hover:bg-surface-2';
+  // Always ≥44px so the +/- are comfortable thumb targets (§1.8); sm just trims width.
+  const dim = size === 'sm' ? 'h-11 w-11' : 'h-11 w-12';
 
   return (
     <div className="inline-flex items-center gap-1 rounded-pill bg-surface-2 p-1" role="group" aria-label="Quantity">

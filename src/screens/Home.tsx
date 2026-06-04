@@ -81,7 +81,7 @@ export function Home() {
             {binnedCount > 0 && (
               <Link
                 to="/archive"
-                className="flex items-center gap-1 text-meta text-ink-faint hover:text-ink"
+                className="-my-1 flex min-h-11 items-center gap-1 rounded-pill px-2 text-meta text-ink-faint hover:bg-surface-2 hover:text-ink"
                 aria-label={`${binnedCount} binned this trip`}
               >
                 <BinIcon size={14} /> {binnedCount}
