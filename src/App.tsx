@@ -9,6 +9,7 @@ import { GroupSetup } from '@/screens/GroupSetup';
 import { Toasts } from '@/components/Toasts';
 import { PushNudge } from '@/components/PushNudge';
 import { InstallPrompt } from '@/components/InstallPrompt';
+import { Onboarding } from '@/components/Onboarding';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -53,6 +54,7 @@ export default function App() {
           </Routes>
         )}
         <Toasts />
+        <Onboarding />
         <PushNudge />
         <InstallPrompt />
         <UpdatePrompt />

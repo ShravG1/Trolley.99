@@ -51,11 +51,12 @@
     min-height: 100dvh;
   }
 
-  /* Visible focus everywhere (§1.8) */
+  /* Visible focus everywhere (§1.8). NB: no border-radius override here — it
+     would reshape pill buttons into rectangles on tap. The outline follows each
+     element's own radius. */
   :focus-visible {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
-    border-radius: 4px;
   }
 
   /* Tabular quantities (§1.4) */

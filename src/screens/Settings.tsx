@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { guessAisle } from '@/lib/categorise';
+import { enablePush, pushSupported, isInstalledPWA, isIOS } from '@/lib/push';
 import {
   isSupabaseConfigured,
   createInvite,
@@ -22,8 +23,9 @@ export function Settings() {
   const deleted = items.filter((i) => i.status === 'deleted');
 
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [reportingOn, setReportingOn] = useState(false); // off by default (§2.9, §11.3)
-  const [code, setCode] = useState<string | null>(isSupabaseConfigured() ? null : 'TRLY-7K3M');
+  const [code, setCode] = useState<string | null>(isSupabaseConfigured() ? null : 'TRLY7K3M');
   const [minting, setMinting] = useState(false);
 
   const inviteLink = code ? `${window.location.origin}/join/${code}` : '';
@@ -37,6 +39,17 @@ export function Settings() {
       /* ignore — surfaced by the empty link */
     } finally {
       setMinting(false);
+    }
+  }
+
+  async function copyCode() {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -73,8 +86,21 @@ export function Settings() {
       <Section title="Add people">
         <p className="mb-3 text-body text-ink-soft">Send this to whoever’s doing the shopping with you.</p>
         {inviteLink ? (
-          <div className="space-y-2">
-            <code className="block truncate rounded-xs bg-surface-2 px-3 py-2 text-meta text-ink">{inviteLink}</code>
+          <div className="space-y-3">
+            {/* The short code, for anyone who'd rather type it into "Join". */}
+            <div className="flex items-center justify-between rounded-xs bg-surface-2 px-3 py-2">
+              <div>
+                <span className="block text-caption uppercase tracking-wide text-ink-faint">Code</span>
+                <span className="font-mono text-item tracking-[0.15em] text-ink">{code}</span>
+              </div>
+              <button
+                onClick={copyCode}
+                className="min-h-11 rounded-pill border border-line px-4 text-meta font-semibold text-ink"
+              >
+                {codeCopied ? 'Copied' : 'Copy code'}
+              </button>
+            </div>
+            <code className="block truncate rounded-xs bg-surface-2 px-3 py-2 text-meta text-ink-soft">{inviteLink}</code>
             <div className="flex gap-2">
               {'share' in navigator && (
                 <button onClick={share} className="min-h-11 flex-1 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
@@ -82,7 +108,7 @@ export function Settings() {
                 </button>
               )}
               <button onClick={copy} className="min-h-11 flex-1 rounded-pill border border-line px-4 text-meta font-semibold text-ink">
-                {copied ? 'Copied' : 'Copy'}
+                {copied ? 'Copied' : 'Copy link'}
               </button>
             </div>
           </div>
@@ -117,6 +143,11 @@ export function Settings() {
         </Section>
       )}
 
+      {/* Notifications */}
+      <Section title="Notifications">
+        <NotificationsControl />
+      </Section>
+
       {/* Recurring */}
       <Section title="Recurring items">
         <p className="mb-3 text-body text-ink-soft">
@@ -146,9 +177,16 @@ export function Settings() {
       {/* Archive + privacy */}
       <Section title="This trip">
         <Link to="/archive" className="flex items-center justify-between py-2 text-item text-ink">
-          <span>Deleted items</span>
+          <span>Binned items</span>
           <span className="tnum text-meta text-ink-faint">{deleted.length}</span>
         </Link>
+        <button
+          onClick={() => window.dispatchEvent(new Event('trolley:guide'))}
+          className="flex w-full items-center justify-between py-2 text-left text-item text-ink"
+        >
+          <span>How Trolley works</span>
+          <span className="text-ink-faint">→</span>
+        </button>
         <Link to="/privacy" className="flex items-center justify-between py-2 text-item text-ink">
           <span>Privacy & your data</span>
           <span className="text-ink-faint">→</span>
@@ -221,6 +259,56 @@ function AccountBackup() {
       {error && <p className="mt-2 text-meta text-urgent">{error}</p>}
     </div>
   );
+}
+
+// Notifications control (§2.10) — turn on push, or explain why it's not available
+// yet (iOS needs the app installed first). A backstop to the contextual nudge.
+function NotificationsControl() {
+  const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+  );
+  const [busy, setBusy] = useState(false);
+  const needsInstall = isIOS() && !isInstalledPWA();
+
+  async function turnOn() {
+    setBusy(true);
+    const ok = await enablePush();
+    setPerm(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+    if (!ok && Notification?.permission === 'default') {
+      // user dismissed the OS prompt; nothing to do
+    }
+    setBusy(false);
+  }
+
+  let body: React.ReactNode;
+  if (perm === 'granted') {
+    body = <p className="text-body text-ink-soft">On ✓ — you’ll get pinged for urgent adds and when someone bins or can’t find your items.</p>;
+  } else if (perm === 'denied') {
+    body = <p className="text-body text-ink-soft">Blocked. Turn notifications back on for Trolley in your browser/phone settings.</p>;
+  } else if (needsInstall || !pushSupported()) {
+    body = (
+      <p className="text-body text-ink-soft">
+        Add Trolley to your Home Screen first (Share → “Add to Home Screen”), then come back here to switch
+        these on.
+      </p>
+    );
+  } else {
+    body = (
+      <div>
+        <p className="mb-3 text-body text-ink-soft">
+          Get pinged for urgent items and when someone bins or can’t find something you added. Never your own.
+        </p>
+        <button
+          onClick={turnOn}
+          disabled={busy}
+          className="min-h-11 rounded-pill bg-brand px-5 text-meta font-semibold text-on-brand disabled:opacity-40"
+        >
+          {busy ? 'Asking…' : 'Turn on notifications'}
+        </button>
+      </div>
+    );
+  }
+  return body as React.ReactElement;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

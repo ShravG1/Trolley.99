@@ -18,7 +18,7 @@ import { ModeBanner } from '@/components/ModeBanner';
 import { PresenceLine } from '@/components/PresenceLine';
 import { EmptyState } from '@/components/EmptyState';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { PlusIcon, KebabIcon } from '@/components/icons';
+import { PlusIcon, KebabIcon, BinIcon } from '@/components/icons';
 
 export function Home() {
   const items = useStore((s) => s.items);
@@ -45,6 +45,7 @@ export function Home() {
   const others = members.filter((m) => m.user_id !== userId);
   const stale = isShopStale(trip, lastActivity(trip, items), Date.now());
   const unbought = items.filter((i) => i.status === 'pending' || i.status === 'not_found').length;
+  const binnedCount = items.filter((i) => i.status === 'deleted').length;
 
   const windowOpen = trip.lastminute_until ? new Date(trip.lastminute_until).getTime() > Date.now() : false;
   // Spectators (and the shopper's helpers) can only add while the window is open (§7.2).
@@ -73,9 +74,20 @@ export function Home() {
           <h1 className="font-display text-display-l text-ink">
             {mode === 'list' ? 'The List' : `${shopperName === membersName(userId, members) ? 'Your' : `${shopperName}’s`} shop`}
           </h1>
-          <p className="text-meta text-ink-soft">
-            {mode === 'list' ? `${total} ${total === 1 ? 'thing' : 'things'}` : `${done} of ${total} done`}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-meta text-ink-soft">
+              {mode === 'list' ? `${total} ${total === 1 ? 'thing' : 'things'}` : `${done} of ${total} done`}
+            </p>
+            {binnedCount > 0 && (
+              <Link
+                to="/archive"
+                className="flex items-center gap-1 text-meta text-ink-faint hover:text-ink"
+                aria-label={`${binnedCount} binned this trip`}
+              >
+                <BinIcon size={14} /> {binnedCount}
+              </Link>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
