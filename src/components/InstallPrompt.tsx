@@ -123,7 +123,7 @@ function ShareGlyph() {
       strokeLinecap="round"
       strokeLinejoin="round"
       className="inline align-text-bottom text-ink"
-      aria-label="Share"
+      aria-hidden="true"
     >
       <path d="M12 3v12" />
       <path d="M8 7l4-4 4 4" />

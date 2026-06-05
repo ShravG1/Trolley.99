@@ -74,12 +74,12 @@ export function ItemSheet({ item, onClose }: Props) {
                   <button
                     key={key}
                     onClick={() => setCategory(item.id, key as AisleKey)}
-                    className={`flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-meta ${
+                    className={`flex min-h-11 items-center gap-1.5 rounded-pill border px-3 text-meta ${
                       active ? 'border-transparent text-white' : 'border-line text-ink'
                     }`}
                     style={active ? { backgroundColor: aisleColor(key) } : undefined}
                   >
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: aisleColor(key) }} />
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: active ? '#fff' : aisleColor(key) }} />
                     {AISLES[key].label}
                   </button>
                 );

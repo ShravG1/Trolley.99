@@ -57,7 +57,7 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
       style={{ top: vv.top, height: vv.h || undefined }}
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-label={title ?? 'Menu'}
     >
       <button
         aria-label="Close"
@@ -66,8 +66,7 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
       />
       <div
         ref={ref}
-        className="relative flex max-h-full w-full max-w-md flex-col rounded-t-lg bg-surface shadow-e3"
-        style={{ animation: 'item-land 240ms var(--ease-out)' }}
+        className="anim-sheet-rise relative flex max-h-full w-full max-w-md flex-col rounded-t-lg bg-surface shadow-e3"
       >
         <div className="shrink-0 pt-3">
           <div className="flex justify-center">

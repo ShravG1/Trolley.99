@@ -51,7 +51,10 @@ export function Onboarding() {
           <ul className="mt-7 space-y-5">
             {STEPS.map((s) => (
               <li key={s.title} className="flex gap-4">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-surface text-[22px] shadow-e1">
+                <span
+                  aria-hidden="true"
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-surface text-[22px] shadow-e1"
+                >
                   {s.icon}
                 </span>
                 <div>

@@ -82,6 +82,15 @@
     animation: item-land 240ms var(--ease-out);
   }
 
+  /* Bottom sheets rise from below (item-land falls from above — wrong axis here). */
+  @keyframes sheet-rise {
+    from { transform: translateY(24px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .anim-sheet-rise {
+    animation: sheet-rise 240ms var(--ease-out);
+  }
+
   @keyframes urgent-flash {
     0% { background-color: var(--urgent-tint); }
     100% { background-color: transparent; }

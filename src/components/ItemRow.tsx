@@ -8,6 +8,7 @@ import {
   SubIcon,
   NotFoundIcon,
   BinIcon,
+  KebabIcon,
 } from './icons';
 
 interface Props {
@@ -182,14 +183,14 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
           </span>
         )}
 
-        {/* Overflow */}
+        {/* Overflow — deletes outright on a done row, else opens the actions sheet */}
         {!readOnly && (
           <button
             onClick={() => (done ? onDelete(item.id) : onMenu(item))}
-            aria-label="Item actions"
+            aria-label={done ? `Delete ${item.name}` : `More options for ${item.name}`}
             className="grid h-11 w-11 shrink-0 place-items-center text-ink-faint hover:text-ink"
           >
-            ⋯
+            <KebabIcon />
           </button>
         )}
       </div>

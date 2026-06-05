@@ -516,12 +516,14 @@ function RecurringManager() {
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
             placeholder="Add a routine item…"
+            aria-label="Add a routine item"
             maxLength={80}
             className="min-w-0 flex-1 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink"
           />
           <select
             value={newRule}
             onChange={(e) => setNewRule(e.target.value)}
+            aria-label="How often"
             className="rounded-xs border border-line bg-surface-2 px-2 py-2 text-meta text-ink"
           >
             {Object.entries(RULE_LABELS).map(([v, l]) => (

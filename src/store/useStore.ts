@@ -95,6 +95,9 @@ interface StoreState {
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 
+// Auto-dismiss timers, tracked so a manual dismiss/undo clears them (no leak).
+const toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export const useStore = create<StoreState>((set, get) => ({
   userId: CURRENT_USER.user_id,
   members: seedMembers,
@@ -184,8 +187,10 @@ export const useStore = create<StoreState>((set, get) => ({
     const norm = normaliseName(trimmed);
 
     // Dedupe within the active trip (§7.4): bump quantity instead of double-adding.
+    // Only a still-pending row counts — re-adding something already bought/not-found/
+    // substituted this trip should add a fresh pending item, not bump the resolved one.
     const existing = items.find(
-      (i) => i.status !== 'deleted' && normaliseName(i.name) === norm
+      (i) => i.status === 'pending' && normaliseName(i.name) === norm
     );
     if (existing) {
       const nextQty = existing.quantity + quantity;
@@ -358,7 +363,10 @@ export const useStore = create<StoreState>((set, get) => ({
     if (trip.status !== 'shopping') return;
     const me = members.find((m) => m.user_id === userId);
     set({
-      trip: { ...trip, shopper_id: userId, shopper_name: me?.display_name ?? 'You', started_at: now() },
+      // Mirror the RPC, which closes the last-minute window on take-over
+      // (lastminute_until = now()) — otherwise the new shopper briefly sees the
+      // previous shopper's open window until reload() corrects it.
+      trip: { ...trip, shopper_id: userId, shopper_name: me?.display_name ?? 'You', lastminute_until: now(), started_at: now() },
     });
     get().remote?.takeOverShopping(trip.id);
   },
@@ -418,10 +426,15 @@ export const useStore = create<StoreState>((set, get) => ({
   pushToast(message, undo) {
     const id = uid();
     set((s) => ({ toasts: [...s.toasts, { id, message, undo }] }));
-    setTimeout(() => get().dismissToast(id), 6000);
+    toastTimers.set(id, setTimeout(() => get().dismissToast(id), 6000));
   },
 
   dismissToast(id) {
+    const timer = toastTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimers.delete(id);
+    }
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
   },
 

@@ -17,8 +17,13 @@ export function OfflineBanner() {
   }, []);
 
   if (!offline) return null;
+  // White on the dark ink bar reads in both themes; `--bg` went dark-on-dark in
+  // dark mode (~1.2:1).
   return (
-    <div className="sticky top-0 z-40 bg-ink px-4 py-1.5 text-center text-meta font-semibold text-[var(--bg)]">
+    <div
+      role="status"
+      className="sticky top-0 z-40 bg-ink px-4 py-1.5 text-center text-meta font-semibold text-white"
+    >
       Offline. Showing the last list we had.
     </div>
   );

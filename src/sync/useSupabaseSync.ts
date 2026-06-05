@@ -305,13 +305,14 @@ export function useSupabaseSync(): Sync {
 // rollback) and toasts the reason (§6.6).
 function installWriter(reload: () => Promise<void>) {
   const sb = supabase!;
-  const store = useStore.getState();
 
   let pendingCount = 0;
   let countTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Read the live store each call — a captured snapshot would target the wrong
+  // group after a switch (the writer outlives the group it was installed for).
   function groupIdOf(): string {
-    return store.trip.group_id;
+    return useStore.getState().trip.group_id;
   }
 
   async function fanOutPush(item: Item) {

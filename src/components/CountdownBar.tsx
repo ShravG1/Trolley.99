@@ -48,10 +48,14 @@ export function CountdownBar({ until, onClose }: Props) {
       </div>
       <div
         className={`px-4 py-2 text-center text-meta font-semibold ${closing ? 'text-urgent' : 'text-ink-soft'}`}
-        aria-live="polite"
       >
         {closing ? '1 min left to add things.' : `Last-minute window open — ${format(remaining)} left.`}
       </div>
+      {/* Announce only the meaningful threshold, not the per-second tick (which
+          would fire ~900 announcements over a 15-min window). */}
+      <span className="sr-only" aria-live="polite">
+        {closing ? 'One minute left to add to the list.' : ''}
+      </span>
     </div>
   );
 }

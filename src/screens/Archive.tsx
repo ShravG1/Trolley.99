@@ -1,10 +1,11 @@
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { EmptyState } from '@/components/EmptyState';
 
 // Deleted archive (§2.5) — scoped to the current trip; who binned it + when;
 // one-tap re-add.
 export function Archive() {
+  const navigate = useNavigate();
   const items = useStore((s) => s.items);
   const restore = useStore((s) => s.restoreItem);
   const deleted = items.filter((i) => i.status === 'deleted');
@@ -12,9 +13,13 @@ export function Archive() {
   return (
     <div className="mx-auto min-h-dvh max-w-md px-4 pb-16 pt-5">
       <header className="mb-2 flex items-center gap-3">
-        <Link to="/settings" aria-label="Back" className="grid h-11 w-11 place-items-center rounded-pill hover:bg-surface-2">
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+          className="grid h-11 w-11 place-items-center rounded-pill hover:bg-surface-2"
+        >
           ←
-        </Link>
+        </button>
         <h1 className="font-display text-display-l text-ink">Binned</h1>
       </header>
       <p className="mb-4 px-1 text-body text-ink-soft">Binned this trip. Re-add anything you still need.</p>

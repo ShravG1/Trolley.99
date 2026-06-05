@@ -61,7 +61,7 @@ export function Welcome() {
             disabled={busy || !email.trim()}
             className="min-h-13 w-full rounded-pill bg-brand px-6 text-item font-semibold text-on-brand shadow-e2 disabled:opacity-40"
           >
-            Send magic link
+            {busy ? 'Sending…' : 'Send magic link'}
           </button>
           {!isSupabaseConfigured() && (
             <p className="text-center text-caption text-ink-faint">

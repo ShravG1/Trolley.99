@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
+import { BottomSheet } from '@/components/BottomSheet';
 import { isSupabaseConfigured, leaveGroup, clearHistory, deleteAccount } from '@/lib/supabase';
 
 // Short, honest privacy note (§11.2) + the account/group lifecycle controls
@@ -99,27 +100,28 @@ function ConfirmSheet({
   }[action];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
-      <button aria-label="Cancel" className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative w-full max-w-md rounded-t-lg bg-surface p-5 shadow-e3 pb-[max(20px,env(safe-area-inset-bottom))]">
-        <h2 className="font-display text-display-s text-ink">{copy.title}</h2>
-        <p className="mt-2 text-body text-ink-soft">{copy.body}</p>
-        <div className="mt-5 flex gap-2">
-          <button onClick={onCancel} className="min-h-12 flex-1 rounded-pill border border-line font-semibold text-ink">
-            Keep it
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className={`min-h-12 flex-1 rounded-pill font-semibold text-white disabled:opacity-50 ${
-              action === 'delete' ? 'bg-bin' : 'bg-urgent'
-            }`}
-          >
-            {busy ? '…' : 'Yes, do it'}
-          </button>
-        </div>
+    <BottomSheet open onClose={onCancel} title={copy.title}>
+      <p className="text-body text-ink-soft">{copy.body}</p>
+      <div className="mt-5 flex gap-2">
+        {/* Autofocus the safe option so a stray Enter can't confirm a destructive action. */}
+        <button
+          data-autofocus
+          onClick={onCancel}
+          className="min-h-12 flex-1 rounded-pill border border-line font-semibold text-ink"
+        >
+          Keep it
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={busy}
+          className={`min-h-12 flex-1 rounded-pill font-semibold text-white disabled:opacity-50 ${
+            action === 'delete' ? 'bg-bin' : 'bg-urgent'
+          }`}
+        >
+          {busy ? '…' : 'Yes, do it'}
+        </button>
       </div>
-    </div>
+    </BottomSheet>
   );
 }
 

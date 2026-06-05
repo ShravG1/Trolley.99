@@ -17,6 +17,7 @@ import { PrimaryPill } from '@/components/PrimaryPill';
 import { ProgressBar } from '@/components/ProgressBar';
 import { CountdownBar } from '@/components/CountdownBar';
 import { ModeBanner } from '@/components/ModeBanner';
+import { BottomSheet } from '@/components/BottomSheet';
 import { PresenceLine } from '@/components/PresenceLine';
 import { EmptyState } from '@/components/EmptyState';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -212,36 +213,36 @@ export function Home() {
       <ItemSheet item={editItem} onClose={() => setEditItem(null)} />
       <StartShoppingSheet open={startOpen} onClose={() => setStartOpen(false)} />
 
-      {/* Smart finish confirmation — only when there's something un-ticked to lose */}
-      {finishConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
-          <button aria-label="Keep shopping" className="absolute inset-0 bg-black/40" onClick={() => setFinishConfirm(false)} />
-          <div className="relative w-full max-w-md rounded-t-lg bg-surface p-5 shadow-e3 pb-[max(20px,env(safe-area-inset-bottom))]">
-            <h2 className="font-display text-display-s text-ink">Finish with {unbought} un-ticked?</h2>
-            <p className="mt-2 text-body text-ink-soft">
-              {done > 0 ? `${done} ticked off. ` : ''}
-              The {unbought === 1 ? 'one you haven’t' : `${unbought} you haven’t`} ticked will roll over to the next list, so nothing’s lost.
-            </p>
-            <div className="mt-5 flex gap-2">
-              <button
-                onClick={() => setFinishConfirm(false)}
-                className="min-h-12 flex-1 rounded-pill border border-line font-semibold text-ink"
-              >
-                Keep shopping
-              </button>
-              <button
-                onClick={() => {
-                  setFinishConfirm(false);
-                  withViewTransition(finishTrip);
-                }}
-                className="min-h-12 flex-1 rounded-pill bg-brand font-semibold text-on-brand"
-              >
-                Finish anyway
-              </button>
-            </div>
-          </div>
+      {/* Smart finish confirmation — only when there's something un-ticked to lose.
+          Via BottomSheet for focus-trap + Escape/restore; autofocus the safe option. */}
+      <BottomSheet
+        open={finishConfirm}
+        onClose={() => setFinishConfirm(false)}
+        title={`Finish with ${unbought} un-ticked?`}
+      >
+        <p className="text-body text-ink-soft">
+          {done > 0 ? `${done} ticked off. ` : ''}
+          The {unbought === 1 ? 'one you haven’t' : `${unbought} you haven’t`} ticked will roll over to the next list, so nothing’s lost.
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button
+            data-autofocus
+            onClick={() => setFinishConfirm(false)}
+            className="min-h-12 flex-1 rounded-pill border border-line font-semibold text-ink"
+          >
+            Keep shopping
+          </button>
+          <button
+            onClick={() => {
+              setFinishConfirm(false);
+              withViewTransition(finishTrip);
+            }}
+            className="min-h-12 flex-1 rounded-pill bg-brand font-semibold text-on-brand"
+          >
+            Finish anyway
+          </button>
         </div>
-      )}
+      </BottomSheet>
     </div>
   );
 }

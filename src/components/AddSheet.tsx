@@ -96,7 +96,7 @@ export function AddSheet({ open, onClose }: Props) {
             <button
               key={s}
               onClick={() => setName(s)}
-              className="rounded-pill bg-surface-2 px-3 py-1.5 text-meta text-ink hover:bg-brand-tint"
+              className="inline-flex min-h-11 items-center rounded-pill bg-surface-2 px-3 text-meta text-ink hover:bg-brand-tint"
             >
               {s}
             </button>
@@ -129,12 +129,17 @@ export function AddSheet({ open, onClose }: Props) {
                     setAisle(key);
                     setAisleOpen(false);
                   }}
-                  className={`flex items-center gap-1.5 rounded-pill border px-3 py-1.5 text-meta ${
+                  className={`flex min-h-11 items-center gap-1.5 rounded-pill border px-3 text-meta ${
                     active ? 'border-transparent text-white' : 'border-line text-ink'
                   }`}
                   style={active ? { backgroundColor: aisleColor(key) } : undefined}
                 >
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: aisleColor(key) }} />
+                  {/* White dot on the active chip — the aisle colour would vanish
+                      against its own colour-fill background (colour-alone cue). */}
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: active ? '#fff' : aisleColor(key) }}
+                  />
                   {AISLES[key].label}
                 </button>
               );

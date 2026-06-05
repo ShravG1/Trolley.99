@@ -58,13 +58,15 @@ Deno.serve(async () => {
     if (!trip) continue;
 
     // Dedupe: skip if a live row with the same normalised name already exists
-    // on this trip (§7.4).
+    // on this trip (§7.4). Escape LIKE metachars so a name like "100% milk" or
+    // "wd_40" matches literally rather than as a wildcard pattern.
+    const namePattern = r.name.trim().replace(/[\\%_]/g, '\\$&');
     const { data: existing } = await admin
       .from('items')
       .select('id')
       .eq('trip_id', trip.id)
       .neq('status', 'deleted')
-      .ilike('name', r.name.trim());
+      .ilike('name', namePattern);
     if (existing && existing.length > 0) {
       await admin.from('recurring_items').update({ last_added_at: new Date().toISOString() }).eq('id', r.id);
       continue;

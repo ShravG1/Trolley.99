@@ -82,7 +82,7 @@ export default function Reporting() {
                   <span className="font-body text-item text-ink">{name}</span>
                   <span className="text-stat font-semibold tabular-nums text-ink">{n}</span>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-pill bg-surface-2">
+                <div className="h-2 w-full overflow-hidden rounded-pill bg-surface-2" aria-hidden="true">
                   <div className="h-full rounded-pill bg-brand" style={{ width: `${(n / max) * 100}%` }} />
                 </div>
               </li>

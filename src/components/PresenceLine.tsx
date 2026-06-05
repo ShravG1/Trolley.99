@@ -11,5 +11,7 @@ export function PresenceLine({ names }: Props) {
     names.length === 1
       ? `${names[0]}’s looking too`
       : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]} are looking too`;
-  return <p className="px-4 pt-1 text-caption text-ink-faint">{text}</p>;
+  // Polite live region so a screen reader announces when someone starts/stops
+  // viewing, rather than the change landing silently.
+  return <p aria-live="polite" className="px-4 pt-1 text-caption text-ink-faint">{text}</p>;
 }
