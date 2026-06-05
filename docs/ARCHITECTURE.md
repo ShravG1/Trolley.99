@@ -15,8 +15,13 @@
   client dedupes against the optimistic row. Rejected writes roll back + toast the
   reason. Realtime is the reconciler.
 - **Realtime (§6.4):** subscribe ONLY to the active group's `items` and `trips`. On
-  reconnect, re-fetch the current list to catch missed events. Throttle presence /
-  spectator updates so a 30-minute shop doesn't melt the battery.
+  reconnect, re-fetch the current list to catch missed events. **Live presence** runs
+  on a separate per-group channel (`presence:<gid>`): each client tracks itself keyed
+  by user id (so multiple tabs/devices collapse to one), and the throttled `sync`
+  (`src/lib/throttle.ts`, leading+trailing, 4s) feeds the present user ids into the
+  store, where the List + spectator views resolve them to the "…looking too" line
+  (`src/lib/presence.ts`). Throttling keeps a 30-minute shop from melting the battery.
+  Presence is ephemeral/in-memory server-side — no schema, publication or RLS rows.
 - **Time authority (§6.5):** the window, recurrence and "is this locked" are judged
   against **server time** (`now()`), never the device clock. Reporting buckets in UK
   time with DST handled.

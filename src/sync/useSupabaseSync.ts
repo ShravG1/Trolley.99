@@ -10,6 +10,7 @@ import {
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
 import type { GroupMember, Item, Trip } from '@/types/models';
+import { throttle } from '@/lib/throttle';
 
 // -----------------------------------------------------------------------------
 // Supabase sync layer (§6.3–6.4).
@@ -74,6 +75,7 @@ export function useSupabaseSync(): Sync {
 
   const itemsChannel = useRef<RealtimeChannel | null>(null);
   const tripsChannel = useRef<RealtimeChannel | null>(null);
+  const presenceChannel = useRef<RealtimeChannel | null>(null);
   const currentTripId = useRef<string | null>(null);
   const groupId = useRef<string | null>(null);
 
@@ -137,6 +139,13 @@ export function useSupabaseSync(): Sync {
 
     let cancelled = false;
     const sb = supabase;
+
+    // Presence is chatty (heartbeats + every join/leave); throttle the store
+    // update so a 30-minute shop doesn't re-render the list to death (§6.4).
+    const pushViewers = throttle(
+      (ids: string[]) => useStore.getState().setViewers(ids),
+      4000
+    );
 
     async function fetchMembers(gid: string): Promise<GroupMember[]> {
       const { data } = await sb
@@ -204,6 +213,32 @@ export function useSupabaseSync(): Sync {
         .subscribe();
     }
 
+    // Live "who's viewing" (§6.4). A presence channel per group: each client
+    // tracks itself; on every sync we push the present user ids (throttled) into
+    // the store, where the List/spectator views resolve them to names. Ephemeral
+    // and in-memory server-side — no schema, no publication, no RLS rows.
+    function subscribePresence(gid: string, uid: string) {
+      presenceChannel.current?.unsubscribe();
+      const channel = sb.channel(`presence:${gid}`, {
+        // Key by user id so a member's multiple tabs/devices collapse to one
+        // entry — we want "who", not "how many sockets".
+        config: { presence: { key: uid } },
+      });
+      channel
+        .on('presence', { event: 'sync' }, () => {
+          // presenceState() keys are the tracked user ids (our chosen key).
+          pushViewers(Object.keys(channel.presenceState()));
+        })
+        .subscribe((statusText) => {
+          // (Re)announce ourselves on every (re)join — covers reconnects after
+          // the socket drops in the background (§6.4).
+          if (statusText === 'SUBSCRIBED') {
+            void channel.track({ user_id: uid, online_at: new Date().toISOString() });
+          }
+        });
+      presenceChannel.current = channel;
+    }
+
     (async () => {
       const groups = await listMyGroups();
       if (cancelled) return;
@@ -214,6 +249,7 @@ export function useSupabaseSync(): Sync {
       groupId.current = groups[0].group_id;
       installWriter(reload);
       subscribeTrips(groupId.current);
+      subscribePresence(groupId.current, session!.user.id);
       await reload();
       if (!cancelled) setStatus('ready');
     })();
@@ -234,9 +270,14 @@ export function useSupabaseSync(): Sync {
       document.removeEventListener('visibilitychange', onVisible);
       itemsChannel.current?.unsubscribe();
       tripsChannel.current?.unsubscribe();
+      presenceChannel.current?.unsubscribe();
       itemsChannel.current = null;
       tripsChannel.current = null;
+      presenceChannel.current = null;
       currentTripId.current = null;
+      // Stop any queued trailing update, then clear stale viewers.
+      pushViewers.cancel();
+      useStore.getState().setViewers([]);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, tick]);

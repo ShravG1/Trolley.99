@@ -40,6 +40,9 @@ interface StoreState {
   /** Installed by the Supabase sync layer; null in demo mode (§6.3). */
   remote: RemoteWriter | null;
   setRemote: (remote: RemoteWriter | null) => void;
+  /** Live viewers (user ids) on the active group's presence channel (§6.4). */
+  viewers: string[];
+  setViewers: (ids: string[]) => void;
   /** Replace the whole local view from a server fetch (bootstrap / reload). */
   loadSnapshot: (snap: { userId: string; members: GroupMember[]; trip: Trip; items: Item[] }) => void;
   /** Reconcile a single item arriving over Realtime, deduped by id (§6.3). */
@@ -90,6 +93,7 @@ export const useStore = create<StoreState>((set, get) => ({
   multiAddCount: 0,
   pushNudge: false,
   remote: null,
+  viewers: [],
 
   setPushNudge(v) {
     set({ pushNudge: v });
@@ -97,6 +101,10 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setRemote(remote) {
     set({ remote });
+  },
+
+  setViewers(ids) {
+    set({ viewers: ids });
   },
 
   loadSnapshot({ userId, members, trip, items }) {

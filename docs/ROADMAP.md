@@ -58,6 +58,11 @@ written and ready to deploy. "To wire" = the contained next step.
   the audit trail survives) — wired to the Privacy screen.
 - **Learned hot-list type-ahead (§2.4)** and **persisted recurring items (§2.8)**.
 - **Swipe gesture** axis-lock + `touch-action: pan-y` so it doesn't fight scroll.
+- **Live presence (§6.4):** the static PresenceLine (which listed every member,
+  online or not) is now driven by a per-group Realtime presence channel — real
+  "who's viewing", throttled (leading+trailing, 4s via `src/lib/throttle.ts`),
+  shown in the List **and** spectator views. No backend change: presence is
+  ephemeral/in-memory server-side (no schema, publication or RLS rows).
 
 ## To wire (next, contained changes)
 

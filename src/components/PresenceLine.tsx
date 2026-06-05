@@ -2,8 +2,9 @@ interface Props {
   names: string[];
 }
 
-// PresenceLine (§2.2, §3) — subtle "Mum's looking too". Throttled in real use
-// to spare battery (§6.4); here it just renders the current watchers.
+// PresenceLine (§2.2, §3) — subtle "Mum's looking too", fed by the live Realtime
+// presence channel. Throttled upstream in useSupabaseSync to spare battery
+// (§6.4); this stays dumb and just renders whoever's currently watching.
 export function PresenceLine({ names }: Props) {
   if (names.length === 0) return null;
   const text =

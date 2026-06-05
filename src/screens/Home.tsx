@@ -4,6 +4,7 @@ import { useStore } from '@/store/useStore';
 import { groupForList, groupForShopping, counts } from '@/lib/grouping';
 import { isShopStale, lastActivity } from '@/lib/rules';
 import { withViewTransition } from '@/lib/viewTransition';
+import { viewerNames } from '@/lib/presence';
 import type { Item } from '@/types/models';
 
 import { ItemRow } from '@/components/ItemRow';
@@ -27,6 +28,7 @@ export function Home() {
   const shopperName = useStore((s) => s.shopperName());
   const userId = useStore((s) => s.userId);
   const members = useStore((s) => s.members);
+  const viewers = useStore((s) => s.viewers);
   const { markBought, deleteItem, cancelShopping, finishTrip, takeOverShopping } = useStore();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -42,7 +44,9 @@ export function Home() {
   }, []);
 
   const { total, done } = counts(items);
-  const others = members.filter((m) => m.user_id !== userId);
+  // Who's live on the list right now — minus yourself, and (in spectator view)
+  // the shopper, who's already named by the banner (§6.4).
+  const watching = viewerNames(viewers, members, [userId, trip.shopper_id ?? userId]);
   const stale = isShopStale(trip, lastActivity(trip, items), Date.now());
   const unbought = items.filter((i) => i.status === 'pending' || i.status === 'not_found').length;
   const binnedCount = items.filter((i) => i.status === 'deleted').length;
@@ -101,7 +105,7 @@ export function Home() {
         </div>
       </header>
 
-      {mode === 'list' && <PresenceLine names={others.map((m) => m.display_name)} />}
+      {(mode === 'list' || mode === 'spectator') && <PresenceLine names={watching} />}
 
       {/* Overall progress in shop modes */}
       {mode !== 'list' && (
