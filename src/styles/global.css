@@ -1,10 +1,6 @@
-/* -----------------------------------------------------------------------------
-   Fonts (§1.4, §10) — @import MUST precede @tailwind.
-   NOTE: for production these MUST be self-hosted + subset + font-display: swap,
-   with JetBrains Mono lazy-loaded on the Reporting route only. The @import below
-   is a dev convenience; see docs/PERFORMANCE.md for the self-host task.
-   -------------------------------------------------------------------------- */
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Hanken+Grotesk:wght@400..700&display=swap');
+/* Fonts (§1.4, §10): self-hosted variable fonts via @fontsource, imported in
+   main.tsx (Bricolage + Hanken globally, JetBrains Mono lazily on Reporting).
+   No Google Fonts round-trip. */
 
 @tailwind base;
 @tailwind components;

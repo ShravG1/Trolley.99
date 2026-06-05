@@ -1,3 +1,4 @@
+import '@fontsource-variable/jetbrains-mono'; // mono numerals — only on this code-split route (§10)
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
