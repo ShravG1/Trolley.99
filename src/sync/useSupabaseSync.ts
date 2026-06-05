@@ -289,9 +289,10 @@ export function useSupabaseSync(): Sync {
       tripsChannel.current = null;
       presenceChannel.current = null;
       currentTripId.current = null;
-      // Stop any queued trailing update, then clear stale viewers.
+      // Stop any queued trailing update, then drop the group slice so a switch
+      // can't show/act on the previous group while the new snapshot loads (§12).
       pushViewers.cancel();
-      useStore.getState().setViewers([]);
+      useStore.getState().clearGroupScope();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, activeGroupId, tick]);

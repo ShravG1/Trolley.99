@@ -5,6 +5,7 @@ import { groupForList, groupForShopping, counts } from '@/lib/grouping';
 import { isShopStale, lastActivity } from '@/lib/rules';
 import { withViewTransition } from '@/lib/viewTransition';
 import { viewerNames } from '@/lib/presence';
+import { markEnteredList } from '@/lib/landing';
 import type { Item } from '@/types/models';
 
 import { ItemRow } from '@/components/ItemRow';
@@ -17,7 +18,6 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { CountdownBar } from '@/components/CountdownBar';
 import { ModeBanner } from '@/components/ModeBanner';
 import { PresenceLine } from '@/components/PresenceLine';
-import { GroupSwitcher } from '@/components/GroupSwitcher';
 import { EmptyState } from '@/components/EmptyState';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { PlusIcon, KebabIcon, BinIcon, ChevronDownIcon } from '@/components/icons';
@@ -32,12 +32,12 @@ export function Home() {
   const viewers = useStore((s) => s.viewers);
   const groups = useStore((s) => s.groups);
   const activeGroupId = useStore((s) => s.activeGroupId);
+  const switching = useStore((s) => s.switching);
   const { markBought, deleteItem, cancelShopping, finishTrip, takeOverShopping } = useStore();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [startOpen, setStartOpen] = useState(false);
-  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [finishConfirm, setFinishConfirm] = useState(false);
   // Re-evaluate staleness on a timer so "Take over" / "Still shopping?" appear
   // without needing a manual refresh (§2.6).
@@ -46,6 +46,21 @@ export function Home() {
     const id = setInterval(() => setClock((c) => c + 1), 60_000);
     return () => clearInterval(id);
   }, []);
+  // Once a list is on screen, remember we've entered one so "/" doesn't bounce
+  // back to the lists overview mid-session (§12).
+  useEffect(() => {
+    markEnteredList();
+  }, []);
+
+  // Brief loading state while a group switch's snapshot lands (§12) — avoids
+  // flashing the previous group's list or a misleading "empty" state.
+  if (switching) {
+    return (
+      <div className="grid min-h-dvh place-items-center">
+        <p className="font-display text-display-s text-ink-soft">Loading…</p>
+      </div>
+    );
+  }
 
   const { total, done } = counts(items);
   // Active group, for the header switcher (§12). Absent in demo mode (no backend).
@@ -82,15 +97,14 @@ export function Home() {
       <header className="flex items-start justify-between px-4 pb-1 pt-5">
         <div className="min-w-0">
           {groups.length > 0 && activeGroup && (
-            <button
-              onClick={() => setSwitcherOpen(true)}
-              aria-label="Switch list"
-              aria-haspopup="dialog"
+            <Link
+              to="/lists"
+              aria-label="Your lists"
               className="-ml-2 -mt-1 mb-0.5 flex min-h-11 max-w-full items-center gap-1 rounded-pill px-2 text-meta font-semibold text-ink-soft hover:bg-surface-2 hover:text-ink"
             >
               <span className="truncate">{activeGroup.name}</span>
               <ChevronDownIcon size={16} className="shrink-0" />
-            </button>
+            </Link>
           )}
           <h1 className="font-display text-display-l text-ink">
             {mode === 'list' ? 'The List' : `${shopperName === membersName(userId, members) ? 'Your' : `${shopperName}’s`} shop`}
@@ -197,7 +211,6 @@ export function Home() {
       <AddSheet open={addOpen} onClose={() => setAddOpen(false)} />
       <ItemSheet item={editItem} onClose={() => setEditItem(null)} />
       <StartShoppingSheet open={startOpen} onClose={() => setStartOpen(false)} />
-      <GroupSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
 
       {/* Smart finish confirmation — only when there's something un-ticked to lose */}
       {finishConfirm && (

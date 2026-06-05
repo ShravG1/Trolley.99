@@ -45,9 +45,18 @@ deps, so switching groups tears down and rebuilds every group-scoped channel
 (`items` / `trips` / `presence`) against the new group and reloads the snapshot —
 the same teardown path used on reconnect. `resolveActiveGroup` falls back to the
 first group when the stored id is missing or stale (a group you've since left), so a
-stale preference can never strand you. The header switcher (`GroupSwitcher`) flips
-`activeGroupId`; create/join-another reuses `GroupSetup` in `add` mode and switches
-to the new group on success.
+stale preference can never strand you. On switch, `clearGroupScope()` drops the old
+group's items/trip/members/viewers and sets a neutral placeholder trip + a `switching`
+flag, so the previous group's list (or its shopper-mode actions) can't linger or be
+acted on while the new snapshot loads — the list shows a brief loading state instead.
+
+The multi-group surface is the **"Your lists" overview** (`src/screens/Lists.tsx`, route
+`/lists`): a card per group with an at-a-glance status (`getGroupSummaries` — pending
+count + "shopping now", two RLS-scoped queries, no N+1). Tapping a card flips
+`activeGroupId`. Multi-group users land on `/lists` first (`src/lib/landing.ts` —
+in-memory "entered a list" flag, so a fresh open greets them with all their lists but
+in-session navigation stays on the chosen list); single-group users go straight to it.
+Create/join-another reuses `GroupSetup` in `add` mode (`/groups/new`).
 
 ## The mode-shift (§1.6, the signature)
 

@@ -49,6 +49,11 @@ interface StoreState {
   activeGroupId: string | null;
   setGroups: (groups: MyGroup[]) => void;
   setActiveGroup: (id: string) => void;
+  /** True while a group switch's snapshot is loading — drives a loading state (§12). */
+  switching: boolean;
+  /** Drop the active group's slice on switch so the previous group's items/trip/
+   *  shopper-mode can't linger (or be acted on) before the new snapshot lands. */
+  clearGroupScope: () => void;
   /** Replace the whole local view from a server fetch (bootstrap / reload). */
   loadSnapshot: (snap: { userId: string; members: GroupMember[]; trip: Trip; items: Item[] }) => void;
   /** Reconcile a single item arriving over Realtime, deduped by id (§6.3). */
@@ -102,6 +107,7 @@ export const useStore = create<StoreState>((set, get) => ({
   viewers: [],
   groups: [],
   activeGroupId: loadActiveGroup(),
+  switching: false,
 
   setPushNudge(v) {
     set({ pushNudge: v });
@@ -124,8 +130,29 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ activeGroupId: id });
   },
 
+  clearGroupScope() {
+    set((s) => ({
+      items: [],
+      members: [],
+      viewers: [],
+      switching: true,
+      // Neutral placeholder so mode() => 'list' (no stale shopper actions) for the
+      // group we're switching to, until its real snapshot replaces this.
+      trip: {
+        id: '',
+        group_id: s.activeGroupId ?? s.trip.group_id,
+        status: 'active',
+        shopper_id: null,
+        shopper_name: null,
+        lastminute_until: null,
+        started_at: null,
+        completed_at: null,
+      },
+    }));
+  },
+
   loadSnapshot({ userId, members, trip, items }) {
-    set({ userId, members, trip, items });
+    set({ userId, members, trip, items, switching: false });
   },
 
   applyServerItem(item) {

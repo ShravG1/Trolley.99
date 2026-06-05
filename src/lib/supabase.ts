@@ -158,6 +158,58 @@ export async function listMyGroups(): Promise<MyGroup[]> {
   });
 }
 
+/** At-a-glance status for each group on the "Your lists" overview (§12): is
+ * someone shopping, and how many items are still to get. Two queries total
+ * regardless of group count (no N+1); all RLS-scoped to groups you're in. */
+export interface GroupSummary {
+  status: 'active' | 'shopping' | null;
+  shopping: boolean;
+  pending: number;
+}
+export async function getGroupSummaries(
+  groupIds: string[]
+): Promise<Record<string, GroupSummary>> {
+  const empty: Record<string, GroupSummary> = {};
+  if (!supabase || groupIds.length === 0) return empty;
+
+  // Current (active|shopping) trip per group — one row each in normal operation.
+  const { data: trips } = await supabase
+    .from('trips')
+    .select('id, group_id, status')
+    .in('group_id', groupIds)
+    .in('status', ['active', 'shopping']);
+
+  const current: Record<string, { tripId: string; status: 'active' | 'shopping' }> = {};
+  const tripIds: string[] = [];
+  for (const t of trips ?? []) {
+    current[t.group_id as string] = { tripId: t.id as string, status: t.status as 'active' | 'shopping' };
+    tripIds.push(t.id as string);
+  }
+
+  // Pending counts for all those trips in a single query, tallied client-side.
+  const counts: Record<string, number> = {};
+  if (tripIds.length) {
+    const { data: items } = await supabase
+      .from('items')
+      .select('trip_id')
+      .in('trip_id', tripIds)
+      .eq('status', 'pending');
+    for (const i of items ?? []) {
+      const tid = i.trip_id as string;
+      counts[tid] = (counts[tid] ?? 0) + 1;
+    }
+  }
+
+  const out: Record<string, GroupSummary> = {};
+  for (const gid of groupIds) {
+    const cur = current[gid];
+    out[gid] = cur
+      ? { status: cur.status, shopping: cur.status === 'shopping', pending: counts[cur.tripId] ?? 0 }
+      : { status: null, shopping: false, pending: 0 };
+  }
+  return out;
+}
+
 /** Frequency-ranked item names learned from completed trips (§2.4 type-ahead). */
 export async function getHotList(groupId: string): Promise<string[]> {
   if (!supabase) return [];

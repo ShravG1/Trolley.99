@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Home } from '@/screens/Home';
+import { Lists } from '@/screens/Lists';
 import { Welcome } from '@/screens/Welcome';
 import { Settings } from '@/screens/Settings';
 import { Archive } from '@/screens/Archive';
@@ -14,6 +15,8 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useSupabaseSync } from '@/sync/useSupabaseSync';
+import { useStore } from '@/store/useStore';
+import { showOverviewNow } from '@/lib/landing';
 
 // Reporting is code-split out of the initial bundle (§10).
 const Reporting = lazy(() => import('@/screens/Reporting'));
@@ -38,7 +41,8 @@ export default function App() {
         {gate ?? (
           <Routes>
             <Route path="/welcome" element={<Welcome />} />
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Landing />} />
+            <Route path="/lists" element={<Lists />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/archive" element={<Archive />} />
             <Route path="/privacy" element={<Privacy />} />
@@ -70,6 +74,15 @@ function Splash() {
       <p className="font-display text-display-s text-ink-soft">Trolley…</p>
     </div>
   );
+}
+
+// Multi-group users land on the "Your lists" overview so they see every group at
+// once; once they've opened a list this session (or if they only have one), "/"
+// is the list itself (§12).
+function Landing() {
+  const groupCount = useStore((s) => s.groups.length);
+  if (showOverviewNow(groupCount)) return <Navigate to="/lists" replace />;
+  return <Home />;
 }
 
 // Create/join another group from inside the app (§12). Reuses GroupSetup in

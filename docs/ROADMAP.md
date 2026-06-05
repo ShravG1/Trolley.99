@@ -65,11 +65,13 @@ written and ready to deploy. "To wire" = the contained next step.
   ephemeral/in-memory server-side (no schema, publication or RLS rows).
 - **Multi-group support (§12):** the sync layer is scoped to an `activeGroupId`
   (a per-device localStorage preference, `src/lib/activeGroup.ts`) instead of
-  `groups[0]`; switching tears down and rebuilds every group-scoped channel.
-  A header switcher (`GroupSwitcher`) lists your groups, and create/join-another
-  reuses `GroupSetup` in `add` mode (route `/groups/new`), switching to the new
-  group on success. No backend change — `create_group`/`join_group` already
-  support many groups per user, and `groups.name` is readable by members.
+  `groups[0]`; switching tears down and rebuilds every group-scoped channel and
+  clears the old group's slice (`clearGroupScope`, with a brief loading state) so
+  nothing stale lingers. The surface is a **"Your lists" overview** (`/lists`,
+  `src/screens/Lists.tsx`) — a card per group with at-a-glance status
+  (`getGroupSummaries`); multi-group users land there first (`src/lib/landing.ts`).
+  Create/join-another reuses `GroupSetup` in `add` mode (`/groups/new`). No backend
+  change — many-groups-per-user and member-readable `groups.name` already worked.
 
 ## To wire (next, contained changes)
 
