@@ -30,6 +30,14 @@ export interface GroupMember {
   role: 'member';
 }
 
+// A group the signed-in user belongs to: the group's own name plus their
+// per-group display name. Powers the multi-group switcher (§12).
+export interface MyGroup {
+  group_id: string;
+  display_name: string;
+  name: string;
+}
+
 export interface Invite {
   group_id: string;
   code: string;

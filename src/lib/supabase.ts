@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { MyGroup } from '@/types/models';
 
 // Supabase client (§5.3, §6.1).
 //
@@ -135,12 +136,26 @@ export async function createInvite(
   return row ? { code: row.code as string, token: row.token as string } : null;
 }
 
-/** The groups the signed-in user belongs to (V1 UI assumes one, §12). */
-export async function listMyGroups(): Promise<Array<{ group_id: string; display_name: string }>> {
+/** The groups the signed-in user belongs to, with each group's name for the
+ * multi-group switcher (§12). Oldest-first for a stable switcher order. */
+export async function listMyGroups(): Promise<MyGroup[]> {
   if (!supabase) return [];
-  const { data, error } = await supabase.from('group_members').select('group_id, display_name');
+  const { data, error } = await supabase
+    .from('group_members')
+    .select('group_id, display_name, joined_at, groups(name)')
+    .order('joined_at', { ascending: true });
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((r) => {
+    // The embedded to-one relation comes back as an object (or, depending on
+    // PostgREST's inference, a single-element array) — handle both.
+    const g = (r as { groups?: { name?: string } | { name?: string }[] }).groups;
+    const name = (Array.isArray(g) ? g[0]?.name : g?.name) ?? 'Group';
+    return {
+      group_id: r.group_id as string,
+      display_name: r.display_name as string,
+      name,
+    };
+  });
 }
 
 /** Frequency-ranked item names learned from completed trips (§2.4 type-ahead). */

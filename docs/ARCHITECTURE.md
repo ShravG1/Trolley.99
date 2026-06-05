@@ -35,6 +35,20 @@ contained change: replace the seed load + each mutation body with the correspond
 `supabase.from(...).insert/update` / `supabase.rpc(...)` call, and subscribe a
 channel that feeds reconciled rows back into the same `set(...)`.
 
+## Multi-group (§12)
+
+A user can belong to many groups (the data model always allowed it). The store
+holds `groups` (all memberships, with each group's name) and `activeGroupId`; the
+active group is a **per-device** preference in localStorage (`src/lib/activeGroup.ts`),
+not server state. The sync layer reads `activeGroupId` and includes it in its effect
+deps, so switching groups tears down and rebuilds every group-scoped channel
+(`items` / `trips` / `presence`) against the new group and reloads the snapshot —
+the same teardown path used on reconnect. `resolveActiveGroup` falls back to the
+first group when the stored id is missing or stale (a group you've since left), so a
+stale preference can never strand you. The header switcher (`GroupSwitcher`) flips
+`activeGroupId`; create/join-another reuses `GroupSetup` in `add` mode and switches
+to the new group on success.
+
 ## The mode-shift (§1.6, the signature)
 
 `src/lib/viewTransition.ts` wraps the List ↔ Shopping state change in the View

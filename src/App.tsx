@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { Home } from '@/screens/Home';
 import { Welcome } from '@/screens/Welcome';
 import { Settings } from '@/screens/Settings';
@@ -42,6 +42,7 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/archive" element={<Archive />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/groups/new" element={<AddGroupRoute />} />
             <Route
               path="/reporting"
               element={
@@ -69,4 +70,11 @@ function Splash() {
       <p className="font-display text-display-s text-ink-soft">Trolley…</p>
     </div>
   );
+}
+
+// Create/join another group from inside the app (§12). Reuses GroupSetup in
+// 'add' mode; on success it switches to the new group and drops back on the list.
+function AddGroupRoute() {
+  const navigate = useNavigate();
+  return <GroupSetup mode="add" onDone={() => navigate('/')} onCancel={() => navigate('/')} />;
 }

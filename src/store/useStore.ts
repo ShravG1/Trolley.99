@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import type { Item, ItemStatus, Trip, GroupMember } from '@/types/models';
+import type { Item, ItemStatus, Trip, GroupMember, MyGroup } from '@/types/models';
 import type { AisleKey } from '@/lib/aisles';
 import { guessAisle, normaliseName } from '@/lib/categorise';
 import { seedItems, seedMembers, seedTrip, CURRENT_USER } from './seed';
 import type { RemoteWriter } from './remote';
 import { shouldNudge } from '@/lib/push';
+import { loadActiveGroup, saveActiveGroup } from '@/lib/activeGroup';
 
 // -----------------------------------------------------------------------------
 // Client state + optimistic layer (§6.3).
@@ -43,6 +44,11 @@ interface StoreState {
   /** Live viewers (user ids) on the active group's presence channel (§6.4). */
   viewers: string[];
   setViewers: (ids: string[]) => void;
+  /** All groups the user belongs to + which one is in view (§12 multi-group). */
+  groups: MyGroup[];
+  activeGroupId: string | null;
+  setGroups: (groups: MyGroup[]) => void;
+  setActiveGroup: (id: string) => void;
   /** Replace the whole local view from a server fetch (bootstrap / reload). */
   loadSnapshot: (snap: { userId: string; members: GroupMember[]; trip: Trip; items: Item[] }) => void;
   /** Reconcile a single item arriving over Realtime, deduped by id (§6.3). */
@@ -94,6 +100,8 @@ export const useStore = create<StoreState>((set, get) => ({
   pushNudge: false,
   remote: null,
   viewers: [],
+  groups: [],
+  activeGroupId: loadActiveGroup(),
 
   setPushNudge(v) {
     set({ pushNudge: v });
@@ -105,6 +113,15 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setViewers(ids) {
     set({ viewers: ids });
+  },
+
+  setGroups(groups) {
+    set({ groups });
+  },
+
+  setActiveGroup(id) {
+    saveActiveGroup(id);
+    set({ activeGroupId: id });
   },
 
   loadSnapshot({ userId, members, trip, items }) {

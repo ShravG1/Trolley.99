@@ -103,3 +103,9 @@ export const MoonIcon = ({ className, size = 20 }: IconProps) =>
 
 export const PlusIcon = ({ className, size = 22 }: IconProps) =>
   svg(size, className, <><path d="M12 5v14" /><path d="M5 12h14" /></>);
+
+export const ChevronDownIcon = ({ className, size = 18 }: IconProps) =>
+  svg(size, className, <path d="M6 9l6 6 6-6" />);
+
+export const CheckIcon = ({ className, size = 20 }: IconProps) =>
+  svg(size, className, <path d="M5 12.5l4.5 4.5L19 7.5" />);

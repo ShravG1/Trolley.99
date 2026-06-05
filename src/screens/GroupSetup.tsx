@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createGroup, joinGroup, signInWithMagicLink } from '@/lib/supabase';
+import { useStore } from '@/store/useStore';
 
 // After sign-in with no group (§2.1): create a group (name it → empty active
 // trip) or join with a code. On success we re-check membership and drop onto the
@@ -12,7 +13,16 @@ function pendingInvite(): string {
   }
 }
 
-export function GroupSetup({ onDone }: { onDone: () => void }) {
+export function GroupSetup({
+  onDone,
+  mode = 'first',
+  onCancel,
+}: {
+  onDone: () => void;
+  /** 'first' = the auth gate (no group yet); 'add' = a second group from inside the app (§12). */
+  mode?: 'first' | 'add';
+  onCancel?: () => void;
+}) {
   const invited = pendingInvite();
   const [tab, setTab] = useState<'create' | 'join'>(invited ? 'join' : 'create');
   const [name, setName] = useState('');
@@ -29,18 +39,22 @@ export function GroupSetup({ onDone }: { onDone: () => void }) {
     if (!displayName.trim()) return setError('Pop your name in so the others know who’s who.');
     setBusy(true);
     try {
+      let gid: string | null = null;
       if (tab === 'create') {
         if (!name.trim()) throw new Error('Give the group a name.');
-        await createGroup(name.trim(), displayName.trim());
+        gid = await createGroup(name.trim(), displayName.trim());
       } else {
         if (!code.trim()) throw new Error('Paste the code from your invite.');
-        await joinGroup(code.trim(), displayName.trim());
+        gid = await joinGroup(code.trim(), displayName.trim());
       }
       try {
         sessionStorage.removeItem('trolley.invite');
       } catch {
         /* ignore */
       }
+      // Switch straight to the group we just created/joined (§12) — the sync
+      // layer re-scopes to it. The caller then routes us onto the list.
+      if (gid) useStore.getState().setActiveGroup(gid);
       window.history.replaceState({}, '', '/');
       onDone();
     } catch (e) {
@@ -58,8 +72,23 @@ export function GroupSetup({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-10">
-      <h1 className="pt-8 font-display text-display-l text-ink">Get set up</h1>
-      <p className="mt-1 text-body text-ink-soft">Start a new list, or join one you’ve been invited to.</p>
+      {mode === 'add' && (
+        <button
+          onClick={onCancel}
+          aria-label="Back"
+          className="-ml-2 mb-1 grid h-11 w-11 place-items-center rounded-pill text-ink-soft hover:bg-surface-2"
+        >
+          ←
+        </button>
+      )}
+      <h1 className={`font-display text-display-l text-ink ${mode === 'add' ? '' : 'pt-8'}`}>
+        {mode === 'add' ? 'Add another list' : 'Get set up'}
+      </h1>
+      <p className="mt-1 text-body text-ink-soft">
+        {mode === 'add'
+          ? 'Start a new list or join one with a code — switch between them anytime.'
+          : 'Start a new list, or join one you’ve been invited to.'}
+      </p>
 
       <div className="mt-6 inline-flex self-start rounded-pill bg-surface-2 p-1">
         {(['create', 'join'] as const).map((t) => (
@@ -110,7 +139,9 @@ export function GroupSetup({ onDone }: { onDone: () => void }) {
         </button>
       </div>
 
-      {/* Recovery: returning users who saved their list with an email (§ auth) */}
+      {/* Recovery: returning users who saved their list with an email (§ auth).
+          Only on first run — someone already in a group doesn't need it. */}
+      {mode === 'first' && (
       <div className="mt-auto pt-8">
         {recoverSent ? (
           <p className="text-center text-meta text-ink-soft">
@@ -143,6 +174,7 @@ export function GroupSetup({ onDone }: { onDone: () => void }) {
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

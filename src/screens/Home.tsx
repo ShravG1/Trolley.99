@@ -17,9 +17,10 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { CountdownBar } from '@/components/CountdownBar';
 import { ModeBanner } from '@/components/ModeBanner';
 import { PresenceLine } from '@/components/PresenceLine';
+import { GroupSwitcher } from '@/components/GroupSwitcher';
 import { EmptyState } from '@/components/EmptyState';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { PlusIcon, KebabIcon, BinIcon } from '@/components/icons';
+import { PlusIcon, KebabIcon, BinIcon, ChevronDownIcon } from '@/components/icons';
 
 export function Home() {
   const items = useStore((s) => s.items);
@@ -29,11 +30,14 @@ export function Home() {
   const userId = useStore((s) => s.userId);
   const members = useStore((s) => s.members);
   const viewers = useStore((s) => s.viewers);
+  const groups = useStore((s) => s.groups);
+  const activeGroupId = useStore((s) => s.activeGroupId);
   const { markBought, deleteItem, cancelShopping, finishTrip, takeOverShopping } = useStore();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [startOpen, setStartOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [finishConfirm, setFinishConfirm] = useState(false);
   // Re-evaluate staleness on a timer so "Take over" / "Still shopping?" appear
   // without needing a manual refresh (§2.6).
@@ -44,6 +48,8 @@ export function Home() {
   }, []);
 
   const { total, done } = counts(items);
+  // Active group, for the header switcher (§12). Absent in demo mode (no backend).
+  const activeGroup = groups.find((g) => g.group_id === activeGroupId);
   // Who's live on the list right now — minus yourself, and (in spectator view)
   // the shopper, who's already named by the banner (§6.4).
   const watching = viewerNames(viewers, members, [userId, trip.shopper_id ?? userId]);
@@ -74,7 +80,18 @@ export function Home() {
 
       {/* Header */}
       <header className="flex items-start justify-between px-4 pb-1 pt-5">
-        <div>
+        <div className="min-w-0">
+          {groups.length > 0 && activeGroup && (
+            <button
+              onClick={() => setSwitcherOpen(true)}
+              aria-label="Switch list"
+              aria-haspopup="dialog"
+              className="-ml-2 -mt-1 mb-0.5 flex min-h-11 max-w-full items-center gap-1 rounded-pill px-2 text-meta font-semibold text-ink-soft hover:bg-surface-2 hover:text-ink"
+            >
+              <span className="truncate">{activeGroup.name}</span>
+              <ChevronDownIcon size={16} className="shrink-0" />
+            </button>
+          )}
           <h1 className="font-display text-display-l text-ink">
             {mode === 'list' ? 'The List' : `${shopperName === membersName(userId, members) ? 'Your' : `${shopperName}’s`} shop`}
           </h1>
@@ -180,6 +197,7 @@ export function Home() {
       <AddSheet open={addOpen} onClose={() => setAddOpen(false)} />
       <ItemSheet item={editItem} onClose={() => setEditItem(null)} />
       <StartShoppingSheet open={startOpen} onClose={() => setStartOpen(false)} />
+      <GroupSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
 
       {/* Smart finish confirmation — only when there's something un-ticked to lose */}
       {finishConfirm && (

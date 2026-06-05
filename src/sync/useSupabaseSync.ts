@@ -11,6 +11,7 @@ import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
 import type { GroupMember, Item, Trip } from '@/types/models';
 import { throttle } from '@/lib/throttle';
+import { resolveActiveGroup } from '@/lib/activeGroup';
 
 // -----------------------------------------------------------------------------
 // Supabase sync layer (§6.3–6.4).
@@ -72,6 +73,9 @@ export function useSupabaseSync(): Sync {
   const [session, setSession] = useState<Session | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [tick, setTick] = useState(0);
+  // Which group is in view (§12). Persisted in the store; changing it re-runs the
+  // bootstrap effect below, re-scoping every channel to the new group.
+  const activeGroupId = useStore((s) => s.activeGroupId);
 
   const itemsChannel = useRef<RealtimeChannel | null>(null);
   const tripsChannel = useRef<RealtimeChannel | null>(null);
@@ -242,14 +246,24 @@ export function useSupabaseSync(): Sync {
     (async () => {
       const groups = await listMyGroups();
       if (cancelled) return;
+      useStore.getState().setGroups(groups); // feed the switcher (§12)
       if (groups.length === 0) {
         setStatus('needs-group');
         return;
       }
-      groupId.current = groups[0].group_id;
+      // Scope everything to the active group. Resolve the stored preference
+      // against the live list; if it differs (first run, or a stale id from a
+      // group we've left), reflect it and bail — the resulting activeGroupId
+      // change re-runs this effect, which then subscribes to the right group.
+      const resolved = resolveActiveGroup(groups, activeGroupId)!;
+      if (resolved !== activeGroupId) {
+        useStore.getState().setActiveGroup(resolved);
+        return;
+      }
+      groupId.current = resolved;
       installWriter(reload);
-      subscribeTrips(groupId.current);
-      subscribePresence(groupId.current, session!.user.id);
+      subscribeTrips(resolved);
+      subscribePresence(resolved, session!.user.id);
       await reload();
       if (!cancelled) setStatus('ready');
     })();
@@ -280,7 +294,7 @@ export function useSupabaseSync(): Sync {
       useStore.getState().setViewers([]);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, tick]);
+  }, [session, activeGroupId, tick]);
 
   return { status, session, refresh: () => setTick((t) => t + 1) };
 }

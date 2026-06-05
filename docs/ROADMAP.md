@@ -63,6 +63,13 @@ written and ready to deploy. "To wire" = the contained next step.
   "who's viewing", throttled (leading+trailing, 4s via `src/lib/throttle.ts`),
   shown in the List **and** spectator views. No backend change: presence is
   ephemeral/in-memory server-side (no schema, publication or RLS rows).
+- **Multi-group support (§12):** the sync layer is scoped to an `activeGroupId`
+  (a per-device localStorage preference, `src/lib/activeGroup.ts`) instead of
+  `groups[0]`; switching tears down and rebuilds every group-scoped channel.
+  A header switcher (`GroupSwitcher`) lists your groups, and create/join-another
+  reuses `GroupSetup` in `add` mode (route `/groups/new`), switching to the new
+  group on success. No backend change — `create_group`/`join_group` already
+  support many groups per user, and `groups.name` is readable by members.
 
 ## To wire (next, contained changes)
 
