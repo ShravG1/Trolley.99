@@ -292,11 +292,6 @@ function ShoppingBody({ readOnly, ...props }: BodyProps) {
   const items = useStore((s) => s.items);
   const groups = groupForShopping(items);
 
-  // Everything's been actioned (bought / not-found / binned) — don't leave a blank scroll.
-  if (groups.length === 0) {
-    return <EmptyState line="All done — nothing left to grab." />;
-  }
-
   return (
     <div className="pb-4">
       {groups.map((g) => (

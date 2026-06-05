@@ -64,9 +64,10 @@ features and the one client-side Tier-A item:
   learns a clock offset from the REST `Date` header on bootstrap; the window /
   "can add" / staleness checks now judge against it, falling back to the device
   clock. Unit-tested.
-- Empty shopping-mode state; single-group hides the switch chevron; `GroupSetup`
-  tabs got `role=tablist/tab` + `aria-selected`; `BottomSheet` no longer re-attaches
-  viewport listeners on every parent render.
+- Single-group hides the switch chevron; `GroupSetup` tabs got `role=tablist/tab`
+  + `aria-selected`; `BottomSheet` no longer re-attaches viewport listeners on
+  every parent render. (A shopping-mode "all done" state was considered but dropped
+  — `groupForShopping` keeps bought rows visible, so a blank scroll can't occur.)
 
 Still **deferred** (lower value / churn): `ensureSession()` on the write path,
 caching members/hot-list across events, and offsetting toasts above the bottom bar.
