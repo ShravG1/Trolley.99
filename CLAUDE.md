@@ -17,7 +17,9 @@ npm run test     # vitest
 ```
 
 ## Gotchas
-- **Commit as meshavie@gmail.com** or Vercel rejects the deploy (standing git-author gotcha).
+- **Git author:** the owner's own commits use `meshavie@gmail.com`; Claude/automated
+  commits use `noreply@anthropic.com`. Both deploy fine on `main` (Vercel deploys on push,
+  verified) — use one of these known-good authors rather than an unrelated one.
 - Supabase keys live in env vars (never committed) — set them in Vercel + `.env.local`.
 
 ## Conventions
