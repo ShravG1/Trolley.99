@@ -10,20 +10,22 @@ interface Props {
   onClose: () => void;
 }
 
-// ItemSheet (§2.3) — tap-body edit (qty, aisle, urgent) plus the swipe-left
+// ItemSheet (§2.3) — tap-body edit (name, qty, aisle, urgent) plus the swipe-left
 // actions (Substitute / Not found / Delete). One sheet, both jobs.
 export function ItemSheet({ item, onClose }: Props) {
-  const { setQuantity, setCategory, toggleUrgent, substitute, markNotFound, deleteItem } = useStore();
+  const { setQuantity, setCategory, renameItem, toggleUrgent, substitute, markNotFound, deleteItem } = useStore();
 
   const [subbing, setSubbing] = useState(false);
   const [subName, setSubName] = useState('');
   const [subNote, setSubNote] = useState('');
+  const [name, setName] = useState('');
 
   useEffect(() => {
     setSubbing(false);
     setSubName('');
     setSubNote('');
-  }, [item?.id]);
+    setName(item?.name ?? '');
+  }, [item?.id, item?.name]);
 
   if (!item) return null;
 
@@ -60,6 +62,24 @@ export function ItemSheet({ item, onClose }: Props) {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          <div>
+            <label htmlFor="item-name" className="mb-2 block text-item text-ink">Name</label>
+            <input
+              id="item-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => {
+                const n = name.trim();
+                if (n && n !== item.name) renameItem(item.id, n);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+              maxLength={80}
+              className="w-full rounded-xs border border-line bg-surface-2 px-4 py-3 text-item text-ink focus:border-brand"
+            />
+          </div>
+
           <div className="flex items-center justify-between">
             <span className="text-item text-ink">Quantity</span>
             <QtyStepper value={item.quantity} onChange={(q) => setQuantity(item.id, q)} size="sm" />

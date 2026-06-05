@@ -1,41 +1,58 @@
 import '@fontsource-variable/jetbrains-mono'; // mono numerals — only on this code-split route (§10)
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { SegmentedControl } from '@/components/SegmentedControl';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isSupabaseConfigured, getReportingTally } from '@/lib/supabase';
 
 // Reporting (§2.9) — settings-gated, lazy-loaded (code-split, §10) so JetBrains
 // Mono and this route stay out of the initial bundle. Framed as fun, not
 // surveillance; group-scoped and deletable (§11.3).
 //
-// NOTE: real ranges are computed in UK time with DST handled, against server
-// timestamps — never naive UTC bucketing (§6.5).
+// Live mode reads completed-trip aggregates server-side per range; demo mode
+// fills the bars from the seed so the screen is explorable without a backend.
 type Range = 'week' | 'month' | 'all';
+
+const RANGE_LABEL: Record<Range, string> = { week: 'This week', month: 'This month', all: 'All-time' };
 
 export default function Reporting() {
   const items = useStore((s) => s.items);
   const members = useStore((s) => s.members);
+  const groupId = useStore((s) => s.trip.group_id);
   const [range, setRange] = useState<Range>('month');
+  const isLive = isSupabaseConfigured();
+  const [live, setLive] = useState<Record<string, number> | null>(null);
 
-  // Tally bought items by member. Real groups start empty (a fuller version reads
-  // completed-trip aggregates server-side, §2.9). The demo seed only fills the
-  // bars in offline demo mode — never for real users.
+  // Live: pull completed-trip aggregates for the selected range.
+  useEffect(() => {
+    if (!isLive) return;
+    let alive = true;
+    getReportingTally(groupId, range)
+      .then((t) => alive && setLive(t))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [isLive, groupId, range]);
+
   const tally = useMemo(() => {
     const counts = new Map<string, number>();
     for (const m of members) counts.set(m.display_name, 0);
-    for (const i of items) {
-      if ((i.status === 'bought' || i.status === 'substituted') && i.acted_by_name) {
-        counts.set(i.acted_by_name, (counts.get(i.acted_by_name) ?? 0) + 1);
+    if (isLive) {
+      for (const [name, n] of Object.entries(live ?? {})) counts.set(name, (counts.get(name) ?? 0) + n);
+    } else {
+      // Demo: tally the seed's bought items + a little flavour so the bars aren't empty.
+      for (const i of items) {
+        if ((i.status === 'bought' || i.status === 'substituted') && i.acted_by_name) {
+          counts.set(i.acted_by_name, (counts.get(i.acted_by_name) ?? 0) + 1);
+        }
       }
-    }
-    if (!isSupabaseConfigured()) {
       counts.set('Mum', (counts.get('Mum') ?? 0) + 24);
       counts.set('Shrav', (counts.get('Shrav') ?? 0) + 12);
       counts.set('Dad', (counts.get('Dad') ?? 0) + 7);
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [items, members]);
+  }, [items, members, isLive, live]);
 
   const hasData = tally.some(([, n]) => n > 0);
 
@@ -72,7 +89,8 @@ export default function Reporting() {
         <>
           {mvp && (
             <p className="mb-6 font-body text-body text-ink-soft">
-              This month’s MVP: <span className="font-semibold text-ink">{mvp[0]}</span>. {mvp[1]} items. Show-off.
+              {range === 'all' ? 'All-time MVP' : `${RANGE_LABEL[range]}’s MVP`}:{' '}
+              <span className="font-semibold text-ink">{mvp[0]}</span>. {mvp[1]} items. Show-off.
             </p>
           )}
           <ul className="space-y-4">

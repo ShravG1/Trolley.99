@@ -6,6 +6,7 @@ import { isShopStale, lastActivity } from '@/lib/rules';
 import { withViewTransition } from '@/lib/viewTransition';
 import { viewerNames } from '@/lib/presence';
 import { markEnteredList } from '@/lib/landing';
+import { serverNow } from '@/lib/serverTime';
 import type { Item } from '@/types/models';
 
 import { ItemRow } from '@/components/ItemRow';
@@ -69,11 +70,12 @@ export function Home() {
   // Who's live on the list right now — minus yourself, and (in spectator view)
   // the shopper, who's already named by the banner (§6.4).
   const watching = viewerNames(viewers, members, [userId, trip.shopper_id ?? userId]);
-  const stale = isShopStale(trip, lastActivity(trip, items), Date.now());
+  // Judge the window/staleness against server time, not the device clock (§6.5).
+  const stale = isShopStale(trip, lastActivity(trip, items), serverNow());
   const unbought = items.filter((i) => i.status === 'pending' || i.status === 'not_found').length;
   const binnedCount = items.filter((i) => i.status === 'deleted').length;
 
-  const windowOpen = trip.lastminute_until ? new Date(trip.lastminute_until).getTime() > Date.now() : false;
+  const windowOpen = trip.lastminute_until ? new Date(trip.lastminute_until).getTime() > serverNow() : false;
   // Spectators (and the shopper's helpers) can only add while the window is open (§7.2).
   const canAdd = mode === 'list' || (mode === 'spectator' && windowOpen);
 
@@ -104,7 +106,7 @@ export function Home() {
               className="-ml-2 -mt-1 mb-0.5 flex min-h-11 max-w-full items-center gap-1 rounded-pill px-2 text-meta font-semibold text-ink-soft hover:bg-surface-2 hover:text-ink"
             >
               <span className="truncate">{activeGroup.name}</span>
-              <ChevronDownIcon size={16} className="shrink-0" />
+              {groups.length >= 2 && <ChevronDownIcon size={16} className="shrink-0" />}
             </Link>
           )}
           <h1 className="font-display text-display-l text-ink">
@@ -137,7 +139,8 @@ export function Home() {
         </div>
       </header>
 
-      {(mode === 'list' || mode === 'spectator') && <PresenceLine names={watching} />}
+      {/* Live "who's looking" in every mode — incl. the shopper, who sees who's watching. */}
+      <PresenceLine names={watching} />
 
       {/* Overall progress in shop modes */}
       {mode !== 'list' && (
@@ -288,6 +291,11 @@ function ListBody(props: BodyProps) {
 function ShoppingBody({ readOnly, ...props }: BodyProps) {
   const items = useStore((s) => s.items);
   const groups = groupForShopping(items);
+
+  // Everything's been actioned (bought / not-found / binned) — don't leave a blank scroll.
+  if (groups.length === 0) {
+    return <EmptyState line="All done — nothing left to grab." />;
+  }
 
   return (
     <div className="pb-4">

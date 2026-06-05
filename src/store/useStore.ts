@@ -72,6 +72,7 @@ interface StoreState {
   }) => void;
   setQuantity: (id: string, quantity: number) => void;
   setCategory: (id: string, category: AisleKey) => void;
+  renameItem: (id: string, name: string) => void;
   toggleUrgent: (id: string) => void;
   markBought: (id: string) => void;
   substitute: (id: string, newName: string, note: string) => void;
@@ -243,6 +244,13 @@ export const useStore = create<StoreState>((set, get) => ({
   setCategory(id, category) {
     set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, category } : i)) }));
     get().remote?.patchItem(id, { category });
+  },
+
+  renameItem(id, name) {
+    const trimmed = name.trim();
+    if (!trimmed) return; // server also rejects empty (§5.5)
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, name: trimmed } : i)) }));
+    get().remote?.patchItem(id, { name: trimmed });
   },
 
   toggleUrgent(id) {

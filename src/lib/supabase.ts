@@ -30,6 +30,21 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured()
     })
   : null;
 
+/** Best-effort server clock from the REST endpoint's `Date` header (§6.5). Used
+ * only to correct the UI's window/staleness checks for a skewed device clock —
+ * never a security boundary (RLS judges the real now()). Null on any failure. */
+export async function fetchServerTime(): Promise<number | null> {
+  if (!url || !anonKey) return null;
+  try {
+    const res = await fetch(`${url}/rest/v1/`, { method: 'HEAD', headers: { apikey: anonKey } });
+    const date = res.headers.get('date');
+    const ms = date ? new Date(date).getTime() : NaN;
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function signInWithMagicLink(email: string): Promise<void> {
   if (!supabase) return;
   // The response is intentionally uniform regardless of whether the email
@@ -206,6 +221,34 @@ export async function getGroupSummaries(
     out[gid] = cur
       ? { status: cur.status, shopping: cur.status === 'shopping', pending: counts[cur.tripId] ?? 0 }
       : { status: null, shopping: false, pending: 0 };
+  }
+  return out;
+}
+
+/** Reporting (§2.9): how many items each member bought/substituted across the
+ * group's COMPLETED trips, within a rolling range. RLS-scoped to the group; the
+ * current in-progress trip is excluded (it counts once it's finished). */
+export async function getReportingTally(
+  groupId: string,
+  range: 'week' | 'month' | 'all'
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  if (!supabase) return out;
+  let q = supabase
+    .from('items')
+    .select('acted_by_name, status, trips!inner(group_id, status, completed_at)')
+    .eq('trips.group_id', groupId)
+    .eq('trips.status', 'completed')
+    .in('status', ['bought', 'substituted']);
+  if (range !== 'all') {
+    const cutoff = new Date(Date.now() - (range === 'week' ? 7 : 30) * 86_400_000).toISOString();
+    q = q.gte('trips.completed_at', cutoff);
+  }
+  const { data, error } = await q;
+  if (error) return out;
+  for (const row of data ?? []) {
+    const name = (row as { acted_by_name?: string | null }).acted_by_name;
+    if (name) out[name] = (out[name] ?? 0) + 1;
   }
   return out;
 }

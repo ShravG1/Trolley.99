@@ -6,12 +6,14 @@ import {
   listMyGroups,
   signInAnonymously,
   setAnonymousFlag,
+  fetchServerTime,
 } from '@/lib/supabase';
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
 import type { GroupMember, Item, Trip } from '@/types/models';
 import { throttle } from '@/lib/throttle';
 import { resolveActiveGroup } from '@/lib/activeGroup';
+import { setServerOffset, computeOffset } from '@/lib/serverTime';
 
 // -----------------------------------------------------------------------------
 // Supabase sync layer (§6.3–6.4).
@@ -88,6 +90,11 @@ export function useSupabaseSync(): Sync {
   useEffect(() => {
     if (!supabase) return;
     const sb = supabase;
+    // Learn the server-clock offset once so the UI's window/staleness checks agree
+    // with the server (§6.5). Best-effort; falls back to the device clock.
+    void fetchServerTime().then((t) => {
+      if (t) setServerOffset(computeOffset(t, Date.now()));
+    });
     sb.auth.getSession().then(async ({ data }) => {
       // Validate the stored session's user still exists server-side (anonymous
       // users can be pruned). If it's gone, drop it so the anon-sign-in effect

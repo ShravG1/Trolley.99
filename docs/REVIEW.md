@@ -50,6 +50,27 @@ triaged. Status keys: ✅ done this pass · 🔶 Tier B (safe, not yet done) ·
 - `OfflineBanner` contrast fixed for dark mode; Welcome shows "Sending…"; Archive back
   uses history (`navigate(-1)`); RecurringManager inputs labelled.
 
+## ✅ Follow-up pass (also done + merged)
+
+A second autonomous sweep cleared most of the Tier-B backlog plus the offered
+features and the one client-side Tier-A item:
+
+- **Reporting on real data** — live mode now reads completed-trip aggregates per
+  range (`getReportingTally`), with the range selector actually filtering and a
+  range-aware MVP line. (Demo mode keeps its seed tally.) The hollow screen is now real.
+- **Inline item-name editing** — `ItemSheet` has a Name field (`renameItem` store action).
+- **Live viewers shown to the shopper too** — `PresenceLine` renders in shopping mode.
+- **Server-time correctness** (was Tier A, but client-only): `src/lib/serverTime.ts`
+  learns a clock offset from the REST `Date` header on bootstrap; the window /
+  "can add" / staleness checks now judge against it, falling back to the device
+  clock. Unit-tested.
+- Empty shopping-mode state; single-group hides the switch chevron; `GroupSetup`
+  tabs got `role=tablist/tab` + `aria-selected`; `BottomSheet` no longer re-attaches
+  viewport listeners on every parent render.
+
+Still **deferred** (lower value / churn): `ensureSession()` on the write path,
+caching members/hot-list across events, and offsetting toasts above the bottom bar.
+
 ## 🔴 Tier A — your call (not auto-merged)
 
 These touch **schema/RLS, auth config, edge-function deploys, or cross-cutting design** —

@@ -17,6 +17,10 @@ interface Props {
 export function BottomSheet({ open, onClose, title, children }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  // Keep the latest onClose without making it an effect dep — call sites pass an
+  // inline arrow, which would otherwise re-attach the viewport listeners each render.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [vv, setVv] = useState<{ h: number; top: number }>(() => ({
     h: typeof window !== 'undefined' ? window.innerHeight : 0,
     top: 0,
@@ -29,7 +33,7 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
       ref.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
     }, 50);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
 
@@ -47,7 +51,8 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
       v?.removeEventListener('scroll', update);
       previouslyFocused.current?.focus?.();
     };
-  }, [open, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
 

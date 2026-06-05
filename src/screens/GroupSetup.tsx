@@ -90,10 +90,12 @@ export function GroupSetup({
           : 'Start a new list, or join one you’ve been invited to.'}
       </p>
 
-      <div className="mt-6 inline-flex self-start rounded-pill bg-surface-2 p-1">
+      <div role="tablist" aria-label="Create or join a list" className="mt-6 inline-flex self-start rounded-pill bg-surface-2 p-1">
         {(['create', 'join'] as const).map((t) => (
           <button
             key={t}
+            role="tab"
+            aria-selected={tab === t}
             onClick={() => setTab(t)}
             className={`min-h-11 rounded-pill px-5 text-meta font-semibold ${
               tab === t ? 'bg-surface text-ink shadow-e1' : 'text-ink-soft'
