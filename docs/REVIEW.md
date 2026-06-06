@@ -72,6 +72,23 @@ features and the one client-side Tier-A item:
 Still **deferred** (lower value / churn): `ensureSession()` on the write path,
 caching members/hot-list across events, and offsetting toasts above the bottom bar.
 
+## ✅ Offline write queue (shipped this pass)
+
+Item writes (insert/patch) now survive poor signal. Each is persisted to an
+IndexedDB op queue *under* the RemoteWriter boundary (the store's optimistic
+layer is untouched bar a `pendingWriteIds` field) and replayed when real
+connectivity returns, reconciling against the optimistic store and the server's
+realtime echoes. Per-item coalescing collapses an offline add→edit→delete→restore
+into one op; replay is single-flight, idempotent (insert upserts on the PK;
+patch is LWW), gated on a real connectivity probe (`fetchServerTime`) with bounded
+backoff, and drops only genuinely un-saveable ops (RLS-fatal / attempts exhausted)
+with a consolidated toast — never silently. The OfflineBanner now shows "N changes
+will sync" / "Syncing N…". Behind `VITE_OFFLINE_QUEUE` (on by default; set '0' to
+kill-switch). Design + as-built deviations: docs/OFFLINE_PLAN.md. Deferred to a
+later pass: queuing trip-lifecycle ops, Background Sync, and persisting the
+optimistic read-cache so offline-added items also show after a restart *while
+still offline*.
+
 ## 🔴 Tier A — your call (not auto-merged)
 
 These touch **schema/RLS, auth config, edge-function deploys, or cross-cutting design** —
@@ -116,7 +133,7 @@ flagged per the "up to Tier B" guidance.
 | **Reporting on real data** | High | M | The screen exists but is empty for real users — read completed-trip/`hot_list` aggregates. |
 | **Generated DB types** | High | S | Kills silent schema drift; foundational. |
 | **Inline item-name edit** | High | S | `ItemSheet` edits qty/aisle/urgency but not the name — a typo means delete + re-add. |
-| **Offline write queue** | High | L | Supermarkets have poor signal; writes currently just fail with a toast. Biggest real-use friction. |
+| **Offline write queue** ✅ | High | L | **Shipped** — durable IndexedDB queue + per-item coalesce + idempotent replay, behind `VITE_OFFLINE_QUEUE`. |
 | **Rename your display name** | Med | S | No self-serve way to change "Mum" → "Sarah" in a group. |
 | **Per-item notes** | Med | S | A general note ("get the own-brand one"); `substitution_note` already exists to build on. |
 | **Per-household aisle order** | Med | M | The aisle-walk order is a fixed generic; let a group reorder it once to match their shop. |
