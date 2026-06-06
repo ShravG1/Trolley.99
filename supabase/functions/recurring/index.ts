@@ -15,6 +15,7 @@ const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
+const CRON_SECRET = Deno.env.get('CRON_SECRET');
 
 // How many days between firings for each rule.
 function dueToday(rule: string, lastAdded: string | null): boolean {
@@ -37,7 +38,15 @@ function dueToday(rule: string, lastAdded: string | null): boolean {
   }
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  // verify_jwt=false; gated by the shared cron secret so the public anon JWT
+  // can't trigger a fan-out of recurring items (§5.4). Scheduler sends it.
+  if (!CRON_SECRET || req.headers.get('x-cron-secret') !== CRON_SECRET) {
+    return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   const { data: recurring } = await admin
     .from('recurring_items')
     .select('*')

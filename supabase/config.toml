@@ -22,5 +22,11 @@ max_frequency = "60s"
 verify_jwt = true
 
 [functions.recurring]
-# Scheduled via cron; invoked by the platform scheduler, not end users.
+# Scheduled via cron; invoked by the platform scheduler, not end users. Gated by
+# a shared CRON_SECRET header instead of a JWT (the public anon JWT must not be
+# able to trigger it).
+verify_jwt = false
+
+[functions.feedback-digest]
+# Same: scheduled-only, gated by the CRON_SECRET header rather than a JWT.
 verify_jwt = false

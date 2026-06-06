@@ -356,8 +356,12 @@ export async function sendFeedback(
   screenshot?: File | null
 ): Promise<void> {
   if (!supabase) return;
+  // The feedback insert policy now requires a real author (user_id = auth.uid()),
+  // so make sure we hold a session before attributing the row (§9).
+  await ensureSession();
   const { data } = await supabase.auth.getUser();
   const uid = data.user?.id ?? null;
+  if (!uid) throw new Error('Not signed in');
 
   let screenshot_path: string | null = null;
   if (screenshot && uid) {

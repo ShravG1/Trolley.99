@@ -17,8 +17,15 @@ const admin = createClient(
 );
 const PAT = Deno.env.get('GITHUB_PAT');
 const REPO = Deno.env.get('GITHUB_REPO'); // owner/repo
+const CRON_SECRET = Deno.env.get('CRON_SECRET');
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  // verify_jwt=false (no end-user context); a shared cron secret is the gate so
+  // the public anon JWT can't trigger the digest. The scheduler sends the same
+  // value (from Vault) in x-cron-secret (§5.4).
+  if (!CRON_SECRET || req.headers.get('x-cron-secret') !== CRON_SECRET) {
+    return json({ ok: false, error: 'unauthorized' }, 401);
+  }
   if (!PAT || !REPO) {
     return json({ ok: false, error: 'github_not_configured' }, 200);
   }
