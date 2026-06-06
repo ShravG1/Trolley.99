@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { RealtimeChannel, Session } from '@supabase/supabase-js';
+import type { RealtimeChannel, Session, SupabaseClient } from '@supabase/supabase-js';
 import {
   supabase,
   isSupabaseConfigured,
@@ -12,9 +12,11 @@ import {
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
 import type { GroupMember, Item, Trip } from '@/types/models';
+import type { Database } from '@/types/database';
 import { throttle } from '@/lib/throttle';
 import { resolveActiveGroup } from '@/lib/activeGroup';
 import { setServerOffset, computeOffset } from '@/lib/serverTime';
+import { createItemWriter, type InnerItemWriter } from './itemWriter';
 
 // -----------------------------------------------------------------------------
 // Supabase sync layer (§6.3–6.4).
@@ -310,42 +312,27 @@ export function useSupabaseSync(): Sync {
   return { status, session, refresh: () => setTick((t) => t + 1) };
 }
 
-// The write side the store calls (§6.3). Each op pushes to Postgres / an RPC and
-// leans on Realtime + reload() to reconcile; on error it resyncs (effective
-// rollback) and toasts the reason (§6.6).
+// One awaitable item writer per app (the offline queue, once wired, replays
+// through the same instance — see docs/OFFLINE_PLAN.md). Lazily created; reused
+// across re-installs (group switches) since the writes target by id, not by the
+// group the writer was installed for.
+let _itemWriter: InnerItemWriter | null = null;
+function getItemWriter(sb: SupabaseClient<Database>): InnerItemWriter {
+  if (!_itemWriter) _itemWriter = createItemWriter(sb);
+  return _itemWriter;
+}
+
+// The write side the store calls (§6.3). Item writes go through the extracted
+// awaitable writer; trip-lifecycle/notify stay fire-and-forget RPCs that lean on
+// reload() to reconcile and toast the reason on failure (§6.6).
 function installWriter(reload: () => Promise<void>) {
   const sb = supabase!;
-
-  let pendingCount = 0;
-  let countTimer: ReturnType<typeof setTimeout> | null = null;
+  const inner = getItemWriter(sb);
 
   // Read the live store each call — a captured snapshot would target the wrong
   // group after a switch (the writer outlives the group it was installed for).
   function groupIdOf(): string {
     return useStore.getState().trip.group_id;
-  }
-
-  async function fanOutPush(item: Item) {
-    try {
-      if (item.priority === 'urgent') {
-        await sb.functions.invoke('send-push', {
-          body: { groupId: groupIdOf(), kind: 'urgent', item: item.name },
-        });
-      } else {
-        // Debounce normal adds into a single count push (§2.10).
-        pendingCount += 1;
-        if (countTimer) clearTimeout(countTimer);
-        countTimer = setTimeout(() => {
-          const count = pendingCount;
-          pendingCount = 0;
-          void sb.functions.invoke('send-push', {
-            body: { groupId: groupIdOf(), kind: 'count', count },
-          });
-        }, 4000);
-      }
-    } catch {
-      /* push is best-effort; never block the list (§2.10) */
-    }
   }
 
   const writer: RemoteWriter = {
@@ -359,27 +346,12 @@ function installWriter(reload: () => Promise<void>) {
         } catch {
           /* offline / sign-in failed — the insert below will surface it */
         }
-        const { error } = await sb.from('items').insert({
-          id: item.id,
-          trip_id: item.trip_id,
-          name: item.name,
-          quantity: item.quantity,
-          category: item.category,
-          priority: item.priority,
-          status: item.status,
-          added_by: item.added_by,
-          added_by_name: item.added_by_name,
-          attempt_count: item.attempt_count,
-          note: item.note,
-          unit: item.unit,
-        });
-        if (error) {
+        const res = await inner.insertItem(item);
+        if (!res.ok) {
           // Window closed / not a member / etc. — resync truth + explain (§6.6).
           useStore.getState().pushToast('Couldn’t add that — check you’re still on this list.');
           await reload();
-          return;
         }
-        await fanOutPush(item);
       })();
     },
 
@@ -390,8 +362,8 @@ function installWriter(reload: () => Promise<void>) {
         } catch {
           /* offline / sign-in failed — the update below will surface it */
         }
-        const { error } = await sb.from('items').update(patch).eq('id', id);
-        if (error) {
+        const res = await inner.patchItem(id, patch);
+        if (!res.ok) {
           useStore.getState().pushToast('Can’t do that.');
           await reload();
         }
