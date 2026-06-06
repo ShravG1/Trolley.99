@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { groupForList, groupForShopping, counts } from '@/lib/grouping';
@@ -35,7 +35,14 @@ export function Home() {
   const groups = useStore((s) => s.groups);
   const activeGroupId = useStore((s) => s.activeGroupId);
   const switching = useStore((s) => s.switching);
-  const { markBought, deleteItem, cancelShopping, finishTrip, takeOverShopping } = useStore();
+  // Select actions individually (stable refs) rather than destructuring the whole
+  // store — otherwise Home re-renders on every unrelated mutation (toasts,
+  // viewers, multi-add count, …), not just the slices it reads.
+  const markBought = useStore((s) => s.markBought);
+  const deleteItem = useStore((s) => s.deleteItem);
+  const cancelShopping = useStore((s) => s.cancelShopping);
+  const finishTrip = useStore((s) => s.finishTrip);
+  const takeOverShopping = useStore((s) => s.takeOverShopping);
 
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
@@ -52,6 +59,24 @@ export function Home() {
   // back to the lists overview mid-session (§12).
   useEffect(() => {
     markEnteredList();
+  }, []);
+
+  // Publish the bottom action bar's height as a CSS var so toasts can sit just
+  // above it instead of overlapping the Finish/Add controls (§3). Reset on
+  // unmount so other screens (no bar) get their toasts back at the bottom.
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => {
+      root.style.setProperty('--bottom-bar-h', `${el.offsetHeight}px`);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--bottom-bar-h');
+    };
   }, []);
 
   // Brief loading state while a group switch's snapshot lands (§12) — avoids
@@ -159,7 +184,7 @@ export function Home() {
       )}
 
       {/* Bottom controls */}
-      <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md space-y-3 bg-gradient-to-t from-bg via-bg to-transparent px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-6">
+      <div ref={barRef} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md space-y-3 bg-gradient-to-t from-bg via-bg to-transparent px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-6">
         {mode === 'list' && (
           <>
             <PrimaryPill

@@ -7,6 +7,7 @@ import {
   signInAnonymously,
   setAnonymousFlag,
   fetchServerTime,
+  ensureSession,
 } from '@/lib/supabase';
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
@@ -348,6 +349,14 @@ function installWriter(reload: () => Promise<void>) {
   const writer: RemoteWriter = {
     insertItem(item) {
       void (async () => {
+        // Self-heal a silently-dropped anon session before the write, so the
+        // first add after a session blip succeeds instead of failing + rolling
+        // back with a misleading "locked" toast (§5.3).
+        try {
+          await ensureSession();
+        } catch {
+          /* offline / sign-in failed — the insert below will surface it */
+        }
         const { error } = await sb.from('items').insert({
           id: item.id,
           trip_id: item.trip_id,
@@ -362,7 +371,7 @@ function installWriter(reload: () => Promise<void>) {
         });
         if (error) {
           // Window closed / not a member / etc. — resync truth + explain (§6.6).
-          useStore.getState().pushToast('List’s locked. They’re shopping.');
+          useStore.getState().pushToast('Couldn’t add that — check you’re still on this list.');
           await reload();
           return;
         }
@@ -372,6 +381,11 @@ function installWriter(reload: () => Promise<void>) {
 
     patchItem(id, patch) {
       void (async () => {
+        try {
+          await ensureSession();
+        } catch {
+          /* offline / sign-in failed — the update below will surface it */
+        }
         const { error } = await sb.from('items').update(patch).eq('id', id);
         if (error) {
           useStore.getState().pushToast('Can’t do that.');

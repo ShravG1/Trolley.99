@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import type { Item } from '@/types/models';
 import { AISLES, aisleColor, aisleTint } from '@/lib/aisles';
 import {
@@ -25,7 +25,9 @@ const SWIPE_THRESHOLD = 72;
 
 // ItemRow (§2.3) — all states, both densities, swipe actions, aisle tab.
 // State is icon + text + position + colour, never colour alone (§1.8).
-export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onDelete }: Props) {
+// Memoised: with the row callbacks now stable (selected, not destructured) only
+// the rows whose item actually changed re-render on a realtime/optimistic update.
+export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onDelete }: Props) {
   const [dx, setDx] = useState(0);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
@@ -196,7 +198,7 @@ export function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onD
       </div>
     </div>
   );
-}
+});
 
 function subLabel(item: Item): string {
   if (item.status === 'pending' && item.priority === 'urgent') return 'Urgent';

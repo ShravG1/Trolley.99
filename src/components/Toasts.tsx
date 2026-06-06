@@ -8,7 +8,10 @@ export function Toasts() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 p-4 pb-[max(16px,env(safe-area-inset-bottom))]"
+      className="pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 p-4"
+      // Sit above the bottom action bar when one is present (Home sets
+      // --bottom-bar-h); otherwise fall back to the safe-area inset (§3).
+      style={{ bottom: 'var(--bottom-bar-h, max(16px, env(safe-area-inset-bottom)))' }}
       aria-live="polite"
       aria-atomic="false"
     >
