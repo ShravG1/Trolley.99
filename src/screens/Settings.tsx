@@ -28,15 +28,22 @@ export function Settings() {
   const [codeCopied, setCodeCopied] = useState(false);
   const [reportingOn, setReportingOn] = useState(false); // off by default (§2.9, §11.3)
   const [code, setCode] = useState<string | null>(isSupabaseConfigured() ? null : 'TRLY7K3M');
+  // The link carries the high-entropy token (§5.2); the short code is shown only
+  // for anyone who'd rather type it into "Join". Demo mode has no token, so the
+  // link falls back to the code there.
+  const [token, setToken] = useState<string | null>(isSupabaseConfigured() ? null : 'TRLY7K3M');
   const [minting, setMinting] = useState(false);
 
-  const inviteLink = code ? `${window.location.origin}/join/${code}` : '';
+  const inviteLink = token ? `${window.location.origin}/join/${token}` : '';
 
   async function mint() {
     setMinting(true);
     try {
       const inv = await createInvite(groupId);
-      if (inv) setCode(inv.code);
+      if (inv) {
+        setCode(inv.code);
+        setToken(inv.token);
+      }
     } catch {
       /* ignore — surfaced by the empty link */
     } finally {

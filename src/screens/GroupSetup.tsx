@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createGroup, joinGroup, signInWithMagicLink } from '@/lib/supabase';
+import { createGroup, joinGroup, joinGroupByToken, signInWithMagicLink } from '@/lib/supabase';
 import { useStore } from '@/store/useStore';
 
 // After sign-in with no group (§2.1): create a group (name it → empty active
@@ -24,10 +24,14 @@ export function GroupSetup({
   onCancel?: () => void;
 }) {
   const invited = pendingInvite();
+  // A link carries the 256-bit token (long hex); a manually-pasted credential is
+  // the 8-char code. Detect which we were handed so we hit the right RPC and
+  // don't dump a 64-char token into the code box (§5.2).
+  const linkToken = /^[0-9a-f]{32,}$/i.test(invited) ? invited : '';
   const [tab, setTab] = useState<'create' | 'join'>(invited ? 'join' : 'create');
   const [name, setName] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [code, setCode] = useState(invited);
+  const [code, setCode] = useState(linkToken ? '' : invited);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [recover, setRecover] = useState(false);
@@ -43,6 +47,8 @@ export function GroupSetup({
       if (tab === 'create') {
         if (!name.trim()) throw new Error('Give the group a name.');
         gid = await createGroup(name.trim(), displayName.trim());
+      } else if (linkToken) {
+        gid = await joinGroupByToken(linkToken, displayName.trim());
       } else {
         if (!code.trim()) throw new Error('Paste the code from your invite.');
         gid = await joinGroup(code.trim(), displayName.trim());
@@ -122,6 +128,10 @@ export function GroupSetup({
             maxLength={60}
             className="w-full rounded-md border border-line bg-surface px-4 py-3 text-item text-ink placeholder:text-ink-faint focus:border-brand"
           />
+        ) : linkToken ? (
+          <p className="rounded-md bg-surface-2 px-4 py-3 text-meta text-ink-soft">
+            You’ve been invited to a list — just add your name above and tap Join.
+          </p>
         ) : (
           <input
             value={code}
@@ -183,5 +193,6 @@ export function GroupSetup({
 
 function humanise(msg: string): string {
   if (msg.includes('invalid_or_expired')) return 'That code’s expired or wrong. Ask for a fresh link.';
+  if (msg.includes('too_many_attempts')) return 'Too many tries — give it a few minutes, then try again.';
   return msg;
 }

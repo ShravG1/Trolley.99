@@ -234,6 +234,21 @@ export type Database = {
           },
         ]
       }
+      join_attempts: {
+        Row: {
+          attempted_at: string
+          user_id: string
+        }
+        Insert: {
+          attempted_at?: string
+          user_id: string
+        }
+        Update: {
+          attempted_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       push_subscriptions: {
         Row: {
           created_at: string
@@ -339,6 +354,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _guard_join_attempt: { Args: never; Returns: undefined }
       cancel_shopping: { Args: { p_trip_id: string }; Returns: undefined }
       clear_history: { Args: { p_group_id: string }; Returns: undefined }
       complete_trip: { Args: { p_trip_id: string }; Returns: string }
@@ -358,6 +374,10 @@ export type Database = {
       is_member: { Args: { gid: string }; Returns: boolean }
       join_group: {
         Args: { p_code: string; p_display_name?: string }
+        Returns: string
+      }
+      join_group_by_token: {
+        Args: { p_display_name?: string; p_token: string }
         Returns: string
       }
       leave_group: { Args: { p_group_id: string }; Returns: undefined }

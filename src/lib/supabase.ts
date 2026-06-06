@@ -129,12 +129,25 @@ export async function createGroup(name: string, displayName: string): Promise<st
   return data as string;
 }
 
-/** Join a group via the RPC — never raw table access (§5.2). */
+/** Join a group via the short code (manual entry) — never raw table access (§5.2). */
 export async function joinGroup(code: string, displayName: string): Promise<string | null> {
   if (!supabase) return null;
   await ensureSession();
   const { data, error } = await supabase.rpc('join_group', {
     p_code: code,
+    p_display_name: displayName,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Join a group via the high-entropy link token (§5.2) — what the shareable
+ * /join/<token> link carries, so the link credential is 256-bit, not 40-bit. */
+export async function joinGroupByToken(token: string, displayName: string): Promise<string | null> {
+  if (!supabase) return null;
+  await ensureSession();
+  const { data, error } = await supabase.rpc('join_group_by_token', {
+    p_token: token,
     p_display_name: displayName,
   });
   if (error) throw error;
