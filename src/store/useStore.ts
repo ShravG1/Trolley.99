@@ -44,6 +44,11 @@ interface StoreState {
   /** Live viewers (user ids) on the active group's presence channel (§6.4). */
   viewers: string[];
   setViewers: (ids: string[]) => void;
+  /** Item ids with a write still queued offline (the offline write queue,
+   *  docs/OFFLINE_PLAN.md §7). Drives the "N changes will sync" indicator and
+   *  keeps loadSnapshot from blinking out an as-yet-unsynced optimistic item. */
+  pendingWriteIds: string[];
+  setPendingWriteIds: (ids: string[]) => void;
   /** Change the signed-in user's own display name locally (after the RPC). */
   setMyName: (name: string) => void;
   /** All groups the user belongs to + which one is in view (§12 multi-group). */
@@ -115,6 +120,7 @@ export const useStore = create<StoreState>((set, get) => ({
   pushNudge: false,
   remote: null,
   viewers: [],
+  pendingWriteIds: [],
   groups: [],
   activeGroupId: loadActiveGroup(),
   switching: false,
@@ -129,6 +135,10 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setViewers(ids) {
     set({ viewers: ids });
+  },
+
+  setPendingWriteIds(ids) {
+    set({ pendingWriteIds: ids });
   },
 
   setGroups(groups) {
@@ -162,7 +172,19 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   loadSnapshot({ userId, members, trip, items }) {
-    set({ userId, members, trip, items, switching: false });
+    set((s) => {
+      // Keep optimistic items that are still queued for THIS trip but haven't
+      // reached the server yet, so a reload on reconnect doesn't blink them out
+      // before the queue replays them — the realtime echo reconciles them in
+      // (docs/OFFLINE_PLAN.md §5). With the queue off, pendingWriteIds is always
+      // empty, so this is a no-op and the snapshot replaces wholesale as before.
+      const serverIds = new Set(items.map((i) => i.id));
+      const pending = new Set(s.pendingWriteIds);
+      const keep = s.items.filter(
+        (i) => pending.has(i.id) && !serverIds.has(i.id) && i.trip_id === trip.id
+      );
+      return { userId, members, trip, items: keep.length ? [...items, ...keep] : items, switching: false };
+    });
   },
 
   applyServerItem(item) {

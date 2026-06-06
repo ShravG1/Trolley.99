@@ -17,6 +17,8 @@ import { throttle } from '@/lib/throttle';
 import { resolveActiveGroup } from '@/lib/activeGroup';
 import { setServerOffset, computeOffset } from '@/lib/serverTime';
 import { createItemWriter, type InnerItemWriter } from './itemWriter';
+import { createOpStore } from './queue/idb';
+import { createReplayEngine, type ReplayEngine } from './queue/replay';
 
 // -----------------------------------------------------------------------------
 // Supabase sync layer (§6.3–6.4).
@@ -322,25 +324,49 @@ function getItemWriter(sb: SupabaseClient<Database>): InnerItemWriter {
   return _itemWriter;
 }
 
-// The write side the store calls (§6.3). Item writes go through the extracted
-// awaitable writer; trip-lifecycle/notify stay fire-and-forget RPCs that lean on
-// reload() to reconcile and toast the reason on failure (§6.6).
-function installWriter(reload: () => Promise<void>) {
-  const sb = supabase!;
-  const inner = getItemWriter(sb);
+// Offline write queue feature flag (docs/OFFLINE_PLAN.md §8). Phase 1 ships it
+// dark — only on when VITE_OFFLINE_QUEUE === '1'; otherwise the online-only
+// direct path runs, so the flag-off build is byte-for-byte the old behaviour.
+const QUEUE_ENABLED = import.meta.env.VITE_OFFLINE_QUEUE === '1';
 
-  // Read the live store each call — a captured snapshot would target the wrong
-  // group after a switch (the writer outlives the group it was installed for).
-  function groupIdOf(): string {
-    return useStore.getState().trip.group_id;
-  }
+// The global replay engine — one durable queue across all groups (§5). Created
+// once and reused; its online/visibility listeners live for the app's lifetime.
+let _engine: ReplayEngine | null = null;
+// Latest reload, refreshed each install so the engine can reconcile after a fatal
+// drop without capturing a stale (wrong-group) closure.
+let _latestReload: (() => Promise<void>) | null = null;
+function getEngine(inner: InnerItemWriter): ReplayEngine {
+  if (_engine) return _engine;
+  _engine = createReplayEngine({
+    db: createOpStore(),
+    inner,
+    // Real connectivity — fetchServerTime is a cheap authenticated HEAD that also
+    // catches Supabase-down, not just internet-down (§4).
+    probe: async () => (await fetchServerTime()) !== null,
+    ensureSession,
+    hooks: {
+      onPending: (ids) => useStore.getState().setPendingWriteIds(ids),
+      onDropped: (n) => {
+        // The list moved on (window closed / trip completed / RLS): tell the user
+        // and resync so the un-saveable optimistic change is rolled back (§6).
+        useStore.getState().pushToast(`Couldn’t save ${n} change${n === 1 ? '' : 's'} — the list moved on.`);
+        void _latestReload?.();
+      },
+    },
+  });
+  _engine.start();
+  return _engine;
+}
 
-  const writer: RemoteWriter = {
+type ItemWrites = Pick<RemoteWriter, 'insertItem' | 'patchItem'>;
+
+// Online-only path (queue off): self-heal the session, write, and on failure
+// toast + reload to roll the optimistic change back — the pre-queue behaviour.
+function directItemWrites(inner: InnerItemWriter, reload: () => Promise<void>): ItemWrites {
+  return {
     insertItem(item) {
       void (async () => {
-        // Self-heal a silently-dropped anon session before the write, so the
-        // first add after a session blip succeeds instead of failing + rolling
-        // back with a misleading "locked" toast (§5.3).
+        // Self-heal a silently-dropped anon session before the write (§5.3).
         try {
           await ensureSession();
         } catch {
@@ -354,7 +380,6 @@ function installWriter(reload: () => Promise<void>) {
         }
       })();
     },
-
     patchItem(id, patch) {
       void (async () => {
         try {
@@ -369,6 +394,43 @@ function installWriter(reload: () => Promise<void>) {
         }
       })();
     },
+  };
+}
+
+// Queue path (queue on): enqueue durably and return immediately — no rollback,
+// the optimistic item stays put and replays when back online. groupId/tripId are
+// snapshotted from the live store at enqueue time so a later group switch can't
+// retarget the op (§5).
+function queuedItemWrites(engine: ReplayEngine): ItemWrites {
+  const tripIdFor = (itemId: string) =>
+    useStore.getState().items.find((i) => i.id === itemId)?.trip_id ?? useStore.getState().trip.id;
+  return {
+    insertItem(item) {
+      void engine.enqueueInsert(item, useStore.getState().trip.group_id, item.trip_id);
+    },
+    patchItem(id, patch) {
+      void engine.enqueuePatch(id, patch, useStore.getState().trip.group_id, tripIdFor(id));
+    },
+  };
+}
+
+// The write side the store calls (§6.3). Item writes go through the queue (when
+// enabled) or the direct online path; trip-lifecycle/notify stay fire-and-forget
+// RPCs that lean on reload() to reconcile and toast the reason on failure (§6.6).
+function installWriter(reload: () => Promise<void>) {
+  const sb = supabase!;
+  const inner = getItemWriter(sb);
+  _latestReload = reload; // keep the engine's fatal-drop reconcile pointed at the live group
+  const itemWrites = QUEUE_ENABLED ? queuedItemWrites(getEngine(inner)) : directItemWrites(inner, reload);
+
+  // Read the live store each call — a captured snapshot would target the wrong
+  // group after a switch (the writer outlives the group it was installed for).
+  function groupIdOf(): string {
+    return useStore.getState().trip.group_id;
+  }
+
+  const writer: RemoteWriter = {
+    ...itemWrites,
 
     startShopping(tripId, minutes) {
       void (async () => {

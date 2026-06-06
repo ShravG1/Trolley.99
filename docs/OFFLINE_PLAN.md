@@ -326,3 +326,42 @@ once verified.
 New files to add: `src/sync/queue/types.ts`, `src/sync/queue/idb.ts`,
 `src/sync/queue/coalesce.ts`, `src/sync/queue/replay.ts`, plus
 `coalesce.test.ts` / `replay.test.ts`.
+
+---
+
+## 10. Implementation notes (as built)
+
+Deviations from the plan above, each made to avoid silently losing a write:
+
+- **Coalescing unifies delete-onto-insert as a merge, not rule 3's "drop both".**
+  Drop-both loses `add → delete → restore` while offline (the restore becomes a
+  0-row no-op against a row the server never got, so the item shows locally but
+  never syncs). Instead the delete merges into the queued insert, which replays
+  as an insert of a `status='deleted'` row — inert (nothing rolls it over or
+  counts it), and a later restore merges the status back to `'pending'`. Cost: a
+  harmless tombstone row for an `add → delete` with no restore. (`coalesce.ts`.)
+- **In-flight guard.** `planCoalesce` is told the op the engine is currently
+  sending (`inFlight`) and never merges into it — a concurrent edit during a
+  multi-second send becomes a fresh op that drains next, so the edit can't be
+  dropped when the in-flight op is deleted on success. (`replay.ts` + `coalesce.ts`.)
+- **Queue-aware `loadSnapshot`.** A reload on reconnect would briefly blink out an
+  optimistic item that's queued-but-not-yet-replayed; `loadSnapshot` now keeps
+  local items whose id is in `pendingWriteIds` and absent from the snapshot (for
+  the current trip). No-op when the queue is off (`pendingWriteIds` stays empty).
+- **IDB → memory fallback** rather than "fall back to no-queue": if IndexedDB is
+  unavailable the queue uses an in-memory store, so same-session offline→replay
+  still works (just not across restarts). Never throws into the write path.
+- **Single store field `pendingWriteIds: string[]`** (distinct item ids) instead
+  of a bare `pendingWrites` count — it powers both the indicator (`.length`) and
+  the `loadSnapshot` guard. The pending count is global (all groups), not
+  per-group-filtered (deferred; the plan flags filtering as optional).
+
+Still deferred (Phase 2): persisting the optimistic read-cache so offline-added
+items reappear after a PWA restart *while still offline* (today the durable queue
+guarantees the write isn't lost — it replays + echoes back on reconnect — but the
+item isn't shown until then). Trip-lifecycle queueing and Background Sync remain
+out of scope.
+
+**Flag:** `VITE_OFFLINE_QUEUE`. Phase 1 ships dark (on only when `=== '1'`); when
+off the queue branch is dead-code-eliminated, so the build is behaviourally the
+pre-queue app. The flip flips the default in `useSupabaseSync.ts`.
