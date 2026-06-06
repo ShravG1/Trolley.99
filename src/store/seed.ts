@@ -36,6 +36,8 @@ const base = {
   acted_by: null,
   acted_by_name: null,
   substitution_note: null,
+  note: null,
+  unit: null,
   attempt_count: 1,
   acted_at: null,
 };

@@ -280,6 +280,7 @@ export interface TripHistoryEntry {
     name: string;
     status: ItemStatus;
     quantity: number;
+    unit: string | null;
     category: AisleKey;
     acted_by_name: string | null;
   }[];
@@ -298,7 +299,7 @@ export async function getTripHistory(groupId: string, limit = 25): Promise<TripH
   const tripIds = trips.map((t) => t.id);
   const { data: items } = await supabase
     .from('items')
-    .select('trip_id, name, status, quantity, category, acted_by_name')
+    .select('trip_id, name, status, quantity, unit, category, acted_by_name')
     .in('trip_id', tripIds)
     // What the shop actually resolved to — pending rows rolled over, binned rows
     // are noise here.
@@ -311,6 +312,7 @@ export async function getTripHistory(groupId: string, limit = 25): Promise<TripH
       name: i.name,
       status: i.status,
       quantity: i.quantity,
+      unit: i.unit,
       category: i.category as AisleKey,
       acted_by_name: i.acted_by_name,
     });
@@ -344,6 +346,16 @@ export async function takeOverShopping(tripId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc('take_over_shopping', { p_trip_id: tripId });
   if (error) throw error;
   return data as string | null;
+}
+/** Change your own display name in a group (§2.1). The RPC can only touch your
+ * own membership row; past audit snapshots keep the old name. */
+export async function renameMember(groupId: string, displayName: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('rename_member', {
+    p_group_id: groupId,
+    p_display_name: displayName,
+  });
+  if (error) throw error;
 }
 export async function leaveGroup(groupId: string): Promise<void> {
   if (!supabase) return;

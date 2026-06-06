@@ -44,6 +44,8 @@ interface StoreState {
   /** Live viewers (user ids) on the active group's presence channel (§6.4). */
   viewers: string[];
   setViewers: (ids: string[]) => void;
+  /** Change the signed-in user's own display name locally (after the RPC). */
+  setMyName: (name: string) => void;
   /** All groups the user belongs to + which one is in view (§12 multi-group). */
   groups: MyGroup[];
   activeGroupId: string | null;
@@ -69,10 +71,14 @@ interface StoreState {
     quantity: number;
     category?: AisleKey;
     urgent: boolean;
+    note?: string;
+    unit?: string;
   }) => void;
   setQuantity: (id: string, quantity: number) => void;
   setCategory: (id: string, category: AisleKey) => void;
   renameItem: (id: string, name: string) => void;
+  setNote: (id: string, note: string) => void;
+  setUnit: (id: string, unit: string) => void;
   toggleUrgent: (id: string) => void;
   markBought: (id: string) => void;
   substitute: (id: string, newName: string, note: string) => void;
@@ -179,7 +185,7 @@ export const useStore = create<StoreState>((set, get) => ({
     return get().trip.shopper_name;
   },
 
-  addItem({ name, quantity, category, urgent }) {
+  addItem({ name, quantity, category, urgent, note, unit }) {
     const trimmed = name.trim();
     if (!trimmed) return; // server also rejects empty (§5.5)
 
@@ -220,6 +226,8 @@ export const useStore = create<StoreState>((set, get) => ({
       acted_by: null,
       acted_by_name: null,
       substitution_note: null,
+      note: note?.trim() || null,
+      unit: unit?.trim() || null,
       attempt_count: 1,
       created_at: now(),
       acted_at: null,
@@ -251,6 +259,27 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!trimmed) return; // server also rejects empty (§5.5)
     set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, name: trimmed } : i)) }));
     get().remote?.patchItem(id, { name: trimmed });
+  },
+
+  setNote(id, note) {
+    const next = note.trim() || null;
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, note: next } : i)) }));
+    get().remote?.patchItem(id, { note: next });
+  },
+
+  setUnit(id, unit) {
+    const next = unit.trim() || null;
+    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, unit: next } : i)) }));
+    get().remote?.patchItem(id, { unit: next });
+  },
+
+  setMyName(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const { userId } = get();
+    set((s) => ({
+      members: s.members.map((m) => (m.user_id === userId ? { ...m, display_name: trimmed } : m)),
+    }));
   },
 
   toggleUrgent(id) {

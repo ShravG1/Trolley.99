@@ -93,7 +93,9 @@ export default function History() {
                         >
                           <span className={`truncate text-meta ${i.status === 'not_found' ? 'text-ink-faint line-through' : 'text-ink'}`}>
                             {i.name}
-                            {i.quantity > 1 && <span className="text-ink-faint"> ×{i.quantity}</span>}
+                            {(i.quantity > 1 || i.unit) && (
+                              <span className="text-ink-faint"> {i.unit ? `${i.quantity} ${i.unit}` : `×${i.quantity}`}</span>
+                            )}
                           </span>
                           <span className="shrink-0 text-caption text-ink-faint">
                             {i.status === 'substituted' ? 'substituted' : i.status === 'not_found' ? 'not found' : i.acted_by_name ?? ''}

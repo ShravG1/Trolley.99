@@ -13,19 +13,23 @@ interface Props {
 // ItemSheet (§2.3) — tap-body edit (name, qty, aisle, urgent) plus the swipe-left
 // actions (Substitute / Not found / Delete). One sheet, both jobs.
 export function ItemSheet({ item, onClose }: Props) {
-  const { setQuantity, setCategory, renameItem, toggleUrgent, substitute, markNotFound, deleteItem } = useStore();
+  const { setQuantity, setCategory, renameItem, setNote, setUnit, toggleUrgent, substitute, markNotFound, deleteItem } = useStore();
 
   const [subbing, setSubbing] = useState(false);
   const [subName, setSubName] = useState('');
   const [subNote, setSubNote] = useState('');
   const [name, setName] = useState('');
+  const [unit, setUnitVal] = useState('');
+  const [note, setNoteVal] = useState('');
 
   useEffect(() => {
     setSubbing(false);
     setSubName('');
     setSubNote('');
     setName(item?.name ?? '');
-  }, [item?.id, item?.name]);
+    setUnitVal(item?.unit ?? '');
+    setNoteVal(item?.note ?? '');
+  }, [item?.id, item?.name, item?.unit, item?.note]);
 
   if (!item) return null;
 
@@ -80,9 +84,43 @@ export function ItemSheet({ item, onClose }: Props) {
             />
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <span className="text-item text-ink">Quantity</span>
-            <QtyStepper value={item.quantity} onChange={(q) => setQuantity(item.id, q)} size="sm" />
+            <div className="flex items-center gap-2">
+              <input
+                value={unit}
+                onChange={(e) => setUnitVal(e.target.value)}
+                onBlur={() => {
+                  if ((unit.trim() || null) !== (item.unit ?? null)) setUnit(item.id, unit);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                }}
+                placeholder="unit"
+                aria-label="Unit (e.g. litres, pack)"
+                maxLength={24}
+                className="w-24 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink focus:border-brand"
+              />
+              <QtyStepper value={item.quantity} onChange={(q) => setQuantity(item.id, q)} size="sm" />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="item-note" className="mb-2 block text-item text-ink">Note</label>
+            <input
+              id="item-note"
+              value={note}
+              onChange={(e) => setNoteVal(e.target.value)}
+              onBlur={() => {
+                if ((note.trim() || null) !== (item.note ?? null)) setNote(item.id, note);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="e.g. get the own-brand one"
+              maxLength={280}
+              className="w-full rounded-xs border border-line bg-surface-2 px-4 py-3 text-body text-ink focus:border-brand"
+            />
           </div>
 
           <div>

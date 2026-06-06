@@ -14,6 +14,7 @@ import {
   setRecurringActive,
   deleteRecurring,
   sendFeedback,
+  renameMember,
   type RecurringRow,
 } from '@/lib/supabase';
 
@@ -22,6 +23,8 @@ export function Settings() {
   const members = useStore((s) => s.members);
   const items = useStore((s) => s.items);
   const groupId = useStore((s) => s.trip.group_id);
+  const userId = useStore((s) => s.userId);
+  const setMyName = useStore((s) => s.setMyName);
   const deleted = items.filter((i) => i.status === 'deleted');
 
   const [copied, setCopied] = useState(false);
@@ -137,9 +140,19 @@ export function Settings() {
       <Section title="Group">
         <ul className="divide-y divide-line">
           {members.map((m) => (
-            <li key={m.user_id} className="flex items-center justify-between py-3">
-              <span className="text-item text-ink">{m.display_name}</span>
-              <span className="text-meta text-ink-faint">member</span>
+            <li key={m.user_id} className="flex items-center justify-between gap-3 py-3">
+              {m.user_id === userId && isSupabaseConfigured() ? (
+                <NameEditor
+                  name={m.display_name}
+                  onSave={async (next) => {
+                    await renameMember(groupId, next);
+                    setMyName(next);
+                  }}
+                />
+              ) : (
+                <span className="text-item text-ink">{m.display_name}</span>
+              )}
+              <span className="shrink-0 text-meta text-ink-faint">{m.user_id === userId ? 'you' : 'member'}</span>
             </li>
           ))}
         </ul>
@@ -425,6 +438,66 @@ function FeedbackForm({ groupId }: { groupId: string }) {
         {busy ? 'Sending…' : 'Send'}
       </button>
     </div>
+  );
+}
+
+// Inline rename of your own display name (§2.1). Edit-on-tap; saves on blur or
+// Enter, reverts on Escape or empty. The RPC only touches your own row.
+function NameEditor({ name, onSave }: { name: string; onSave: (next: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setValue(name);
+  }, [name, editing]);
+
+  async function commit() {
+    const next = value.trim();
+    setEditing(false);
+    if (!next || next === name) {
+      setValue(name);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(next);
+    } catch {
+      setValue(name); // RPC failed — show the truth
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="flex min-w-0 items-center gap-2 text-left text-item text-ink"
+        aria-label={`Edit your name (currently ${name})`}
+      >
+        <span className="truncate">{saving ? value : name}</span>
+        <span className="text-meta text-brand">Edit</span>
+      </button>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') {
+          setValue(name);
+          setEditing(false);
+        }
+      }}
+      maxLength={40}
+      className="min-w-0 flex-1 rounded-xs border border-line bg-surface-2 px-3 py-2 text-item text-ink focus:border-brand"
+    />
   );
 }
 

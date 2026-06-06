@@ -184,11 +184,13 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          note: string | null
           priority: Database["public"]["Enums"]["priority"]
           quantity: number
           status: Database["public"]["Enums"]["item_status"]
           substitution_note: string | null
           trip_id: string
+          unit: string | null
         }
         Insert: {
           acted_at?: string | null
@@ -201,11 +203,13 @@ export type Database = {
           created_at?: string
           id: string
           name: string
+          note?: string | null
           priority?: Database["public"]["Enums"]["priority"]
           quantity?: number
           status?: Database["public"]["Enums"]["item_status"]
           substitution_note?: string | null
           trip_id: string
+          unit?: string | null
         }
         Update: {
           acted_at?: string | null
@@ -218,11 +222,13 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          note?: string | null
           priority?: Database["public"]["Enums"]["priority"]
           quantity?: number
           status?: Database["public"]["Enums"]["item_status"]
           substitution_note?: string | null
           trip_id?: string
+          unit?: string | null
         }
         Relationships: [
           {
@@ -381,6 +387,10 @@ export type Database = {
         Returns: string
       }
       leave_group: { Args: { p_group_id: string }; Returns: undefined }
+      rename_member: {
+        Args: { p_display_name: string; p_group_id: string }
+        Returns: undefined
+      }
       start_shopping: {
         Args: { p_minutes: number; p_trip_id: string }
         Returns: string

@@ -27,6 +27,7 @@ export function AddSheet({ open, onClose }: Props) {
 
   const [name, setName] = useState('');
   const [qty, setQty] = useState(1);
+  const [unit, setUnit] = useState('');
   const [urgent, setUrgent] = useState(false);
   const [aisle, setAisle] = useState<AisleKey>('other');
   const [aisleOpen, setAisleOpen] = useState(false);
@@ -58,10 +59,11 @@ export function AddSheet({ open, onClose }: Props) {
 
   function commit() {
     if (!name.trim()) return;
-    addItem({ name, quantity: qty, category: aisle, urgent });
+    addItem({ name, quantity: qty, category: aisle, urgent, unit });
     // Keep the sheet open for rapid multi-add (§2.4).
     setName('');
     setQty(1);
+    setUnit('');
     setUrgent(false);
   }
 
@@ -115,7 +117,18 @@ export function AddSheet({ open, onClose }: Props) {
             <span className="text-ink-faint">{aisleOpen ? '▴' : '▾'}</span>
           </button>
 
-          <QtyStepper value={qty} onChange={setQty} size="sm" />
+          <div className="flex items-center gap-2">
+            <input
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && commit()}
+              placeholder="unit"
+              aria-label="Unit (e.g. litres, pack)"
+              maxLength={24}
+              className="w-20 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink placeholder:text-ink-faint focus:border-brand"
+            />
+            <QtyStepper value={qty} onChange={setQty} size="sm" />
+          </div>
         </div>
 
         {aisleOpen && (

@@ -51,6 +51,8 @@ function rowToItem(r: Row): Item {
     acted_by: (r.acted_by as string) ?? null,
     acted_by_name: (r.acted_by_name as string) ?? null,
     substitution_note: (r.substitution_note as string) ?? null,
+    note: (r.note as string) ?? null,
+    unit: (r.unit as string) ?? null,
     attempt_count: (r.attempt_count as number) ?? 1,
     created_at: r.created_at as string,
     acted_at: (r.acted_at as string) ?? null,
@@ -368,6 +370,8 @@ function installWriter(reload: () => Promise<void>) {
           added_by: item.added_by,
           added_by_name: item.added_by_name,
           attempt_count: item.attempt_count,
+          note: item.note,
+          unit: item.unit,
         });
         if (error) {
           // Window closed / not a member / etc. — resync truth + explain (§6.6).

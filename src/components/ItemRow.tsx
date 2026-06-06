@@ -178,10 +178,10 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
           <span className="truncate text-meta text-ink-soft">{subLabel(item)}</span>
         </button>
 
-        {/* Qty chip — hidden when 1 (§2.3) */}
-        {item.quantity > 1 && (
+        {/* Qty chip — shown when >1 or a unit makes it meaningful ("1 pack") */}
+        {(item.quantity > 1 || item.unit) && (
           <span className="tnum shrink-0 rounded-pill bg-surface-2 px-2.5 py-1 text-meta font-semibold text-ink">
-            ×{item.quantity}
+            {item.unit ? `${item.quantity} ${item.unit}` : `×${item.quantity}`}
           </span>
         )}
 
@@ -210,6 +210,9 @@ function subLabel(item: Item): string {
     case 'not_found':
       return 'Not found — rolled over';
     default:
+      // A note is a shopper instruction ("get the own-brand one") — more useful
+      // at the shelf than the aisle/added-by, so it takes the subtitle line.
+      if (item.note) return item.note;
       return `${AISLES[item.category].label}${item.added_by_name ? ` · added by ${item.added_by_name}` : ''}`;
   }
 }
