@@ -324,10 +324,10 @@ function getItemWriter(sb: SupabaseClient<Database>): InnerItemWriter {
   return _itemWriter;
 }
 
-// Offline write queue feature flag (docs/OFFLINE_PLAN.md §8). Phase 1 ships it
-// dark — only on when VITE_OFFLINE_QUEUE === '1'; otherwise the online-only
-// direct path runs, so the flag-off build is byte-for-byte the old behaviour.
-const QUEUE_ENABLED = import.meta.env.VITE_OFFLINE_QUEUE === '1';
+// Offline write queue feature flag (docs/OFFLINE_PLAN.md §8). On by default now
+// the dark deploy is verified; set VITE_OFFLINE_QUEUE='0' to kill-switch back to
+// the online-only direct path (which then dead-code-eliminates the queue).
+const QUEUE_ENABLED = import.meta.env.VITE_OFFLINE_QUEUE !== '0';
 
 // The global replay engine — one durable queue across all groups (§5). Created
 // once and reused; its online/visibility listeners live for the app's lifetime.

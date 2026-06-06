@@ -53,6 +53,7 @@ export function createReplayEngine(deps: ReplayDeps): ReplayEngine {
   const cancel = deps.cancel ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
 
   let draining = false;
+  let redrain = false; // a poke arrived mid-drain → run one more pass after this
   let started = false;
   let inFlight: string | null = null;
   let backoffMs = BASE_BACKOFF_MS;
@@ -83,8 +84,12 @@ export function createReplayEngine(deps: ReplayDeps): ReplayEngine {
   }
 
   async function drain() {
-    if (draining) return;
+    if (draining) {
+      redrain = true; // a write landed mid-pass — don't let it wait for the next trigger
+      return;
+    }
     draining = true;
+    redrain = false;
     let dropped = 0;
     try {
       // navigator.onLine lies; only drain if a request actually round-trips, and
@@ -141,6 +146,10 @@ export function createReplayEngine(deps: ReplayDeps): ReplayEngine {
       draining = false;
       await refreshPending();
       if (dropped > 0) hooks.onDropped(dropped);
+      if (redrain) {
+        redrain = false;
+        void drain(); // pick up anything enqueued during this pass
+      }
     }
   }
 
