@@ -18,8 +18,9 @@ import { useSupabaseSync } from '@/sync/useSupabaseSync';
 import { useStore } from '@/store/useStore';
 import { showOverviewNow } from '@/lib/landing';
 
-// Reporting is code-split out of the initial bundle (§10).
+// Reporting + history are code-split out of the initial bundle (§10).
 const Reporting = lazy(() => import('@/screens/Reporting'));
+const History = lazy(() => import('@/screens/History'));
 
 export default function App() {
   const sync = useSupabaseSync();
@@ -52,6 +53,14 @@ export default function App() {
               element={
                 <Suspense fallback={<Splash />}>
                   <Reporting />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/history"
+              element={
+                <Suspense fallback={<Splash />}>
+                  <History />
                 </Suspense>
               }
             />

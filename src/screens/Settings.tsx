@@ -183,6 +183,14 @@ export function Settings() {
         )}
       </Section>
 
+      {/* Trip history */}
+      <Section title="History">
+        <Link to="/history" className="flex items-center justify-between py-2 text-item text-ink">
+          <span>Past shops</span>
+          <span className="text-ink-faint">→</span>
+        </Link>
+      </Section>
+
       {/* Feedback / bug report */}
       <Section title="Feedback">
         <FeedbackForm groupId={groupId} />

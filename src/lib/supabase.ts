@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { MyGroup } from '@/types/models';
+import type { MyGroup, ItemStatus } from '@/types/models';
+import type { AisleKey } from '@/lib/aisles';
 import type { Database } from '@/types/database';
 
 // Supabase client (§5.3, §6.1).
@@ -265,6 +266,64 @@ export async function getReportingTally(
     if (name) out[name] = (out[name] ?? 0) + 1;
   }
   return out;
+}
+
+/** Read-only history of completed shops for a group (§2.5 trip history). Two
+ * queries (trips, then their items) regardless of trip count — no N+1; all
+ * RLS-scoped to the group. Most-recent first. */
+export interface TripHistoryEntry {
+  id: string;
+  completed_at: string | null;
+  started_at: string | null;
+  shopper_id: string | null;
+  items: {
+    name: string;
+    status: ItemStatus;
+    quantity: number;
+    category: AisleKey;
+    acted_by_name: string | null;
+  }[];
+}
+export async function getTripHistory(groupId: string, limit = 25): Promise<TripHistoryEntry[]> {
+  if (!supabase) return [];
+  const { data: trips } = await supabase
+    .from('trips')
+    .select('id, completed_at, started_at, shopper_id')
+    .eq('group_id', groupId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false })
+    .limit(limit);
+  if (!trips || trips.length === 0) return [];
+
+  const tripIds = trips.map((t) => t.id);
+  const { data: items } = await supabase
+    .from('items')
+    .select('trip_id, name, status, quantity, category, acted_by_name')
+    .in('trip_id', tripIds)
+    // What the shop actually resolved to — pending rows rolled over, binned rows
+    // are noise here.
+    .in('status', ['bought', 'substituted', 'not_found']);
+
+  const byTrip = new Map<string, TripHistoryEntry['items']>();
+  for (const i of items ?? []) {
+    const list = byTrip.get(i.trip_id) ?? [];
+    list.push({
+      name: i.name,
+      status: i.status,
+      quantity: i.quantity,
+      category: i.category as AisleKey,
+      acted_by_name: i.acted_by_name,
+    });
+    byTrip.set(i.trip_id, list);
+  }
+
+  return trips.map((t) => ({
+    id: t.id,
+    completed_at: t.completed_at,
+    started_at: t.started_at,
+    shopper_id: t.shopper_id,
+    items: byTrip.get(t.id) ?? [],
+  }));
 }
 
 /** Frequency-ranked item names learned from completed trips (§2.4 type-ahead). */
