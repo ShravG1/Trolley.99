@@ -99,7 +99,7 @@ export async function enablePush(): Promise<boolean> {
     await supabase.from('push_subscriptions').upsert({
       user_id: userId,
       endpoint: json.endpoint!,
-      keys: json.keys,
+      keys: json.keys ?? {},
     });
     return true;
   } catch {

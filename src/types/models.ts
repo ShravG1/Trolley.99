@@ -1,13 +1,25 @@
-// Domain types (§4). In production these are GENERATED from the schema via
-// `supabase gen types typescript` (§6.1) so a schema change breaks the build
-// loudly. This hand-written mirror documents the shape and powers the local
-// store until the generated file lands at src/types/database.ts.
+// Domain types (§4). These are now DERIVED from the schema-generated
+// `src/types/database.ts` (regenerate with `supabase gen types typescript
+// --project-id <ref>`), so a column rename/removal/type change breaks the build
+// loudly instead of drifting silently (§6.1). Only two kinds of deviation from
+// the raw rows are kept deliberately:
+//   • narrowings — DB stores `category`/`recurrence_rule` as `text`; the app
+//     knows the tighter union (AisleKey / RecurrenceRule).
+//   • client-only fields — e.g. `Trip.shopper_name` is resolved from
+//     group_members at read time and never persisted on the `trips` row.
 
 import type { AisleKey } from '@/lib/aisles';
+import type { Database } from '@/types/database';
 
-export type TripStatus = 'active' | 'shopping' | 'completed';
-export type ItemStatus = 'pending' | 'bought' | 'substituted' | 'not_found' | 'deleted';
-export type Priority = 'normal' | 'urgent';
+type Row<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Row'];
+
+// Enums come straight from the schema — drift here is now a type error.
+export type TripStatus = Database['public']['Enums']['trip_status'];
+export type ItemStatus = Database['public']['Enums']['item_status'];
+export type Priority = Database['public']['Enums']['priority'];
+
+// `recurrence_rule` is free `text` in the DB; the app constrains it.
 export type RecurrenceRule =
   | 'daily'
   | 'twice_weekly'
@@ -15,79 +27,37 @@ export type RecurrenceRule =
   | 'weekly'
   | 'custom';
 
-export interface Group {
-  id: string;
-  name: string;
-  created_by: string;
-  created_at: string;
-}
+export type Group = Row<'groups'>;
 
-export interface GroupMember {
-  group_id: string;
-  user_id: string;
-  display_name: string;
-  joined_at: string;
+export interface GroupMember extends Omit<Row<'group_members'>, 'role'> {
   role: 'member';
 }
 
 // A group the signed-in user belongs to: the group's own name plus their
-// per-group display name. Powers the multi-group switcher (§12).
+// per-group display name. Powers the multi-group switcher (§12). This is a
+// join shape, not a single table row, so it stays hand-written.
 export interface MyGroup {
   group_id: string;
   display_name: string;
   name: string;
 }
 
-export interface Invite {
-  group_id: string;
-  code: string;
-  token: string;
-  expires_at: string | null;
-  created_by: string;
-}
+export type Invite = Row<'invites'>;
 
-export interface Trip {
-  id: string;
-  group_id: string;
-  status: TripStatus;
-  shopper_id: string | null;
+export interface Trip extends Row<'trips'> {
+  // Resolved from group_members at read time for display; never on the row (§6.5).
   shopper_name: string | null;
-  lastminute_until: string | null; // timestamptz — judged against server time (§6.5)
-  started_at: string | null;
-  completed_at: string | null;
 }
 
-export interface Item {
-  id: string; // client-generated UUID for optimistic dedupe (§6.3)
-  trip_id: string;
-  name: string;
-  quantity: number; // >= 1
-  category: AisleKey;
-  priority: Priority;
-  status: ItemStatus;
-  added_by: string;
-  added_by_name: string; // snapshot for the audit trail (§11.2)
-  acted_by: string | null;
-  acted_by_name: string | null;
-  substitution_note: string | null;
-  attempt_count: number; // default 1, bumped on rollover (§7.4)
-  created_at: string;
-  acted_at: string | null;
+export interface Item extends Omit<Row<'items'>, 'category' | 'added_by'> {
+  category: AisleKey; // narrowed from text
+  added_by: string; // never null in practice (set by the add RPC/audit trail)
 }
 
-export interface RecurringItem {
-  id: string;
-  group_id: string;
-  name: string;
-  default_qty: number;
-  category: AisleKey;
-  recurrence_rule: RecurrenceRule;
-  active: boolean;
-  last_added_at: string | null;
+export interface RecurringItem
+  extends Omit<Row<'recurring_items'>, 'category' | 'recurrence_rule'> {
+  category: AisleKey; // narrowed from text
+  recurrence_rule: RecurrenceRule; // narrowed from text
 }
 
-export interface HotListEntry {
-  group_id: string;
-  item_name: string;
-  frequency: number;
-}
+export type HotListEntry = Row<'hot_list'>;

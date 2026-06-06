@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { MyGroup } from '@/types/models';
+import type { Database } from '@/types/database';
 
 // Supabase client (§5.3, §6.1).
 //
@@ -20,8 +21,8 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(url && anonKey);
 }
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured()
-  ? createClient(url!, anonKey!, {
+export const supabase: SupabaseClient<Database> | null = isSupabaseConfigured()
+  ? createClient<Database>(url!, anonKey!, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
