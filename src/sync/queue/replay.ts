@@ -2,6 +2,7 @@ import type { ConnectivityProbe, OpStore, QueuedOp } from './types';
 import type { InnerItemWriter, WriteResult } from '../itemWriter';
 import type { Item } from '@/types/models';
 import { planCoalesce } from './coalesce';
+import { applyQueueToCache } from './snapshot';
 
 // -----------------------------------------------------------------------------
 // Replay engine (docs/OFFLINE_PLAN.md §4). Persists ops via the queueing writer's
@@ -41,6 +42,9 @@ export interface ReplayEngine {
   enqueuePatch(itemId: string, patch: Partial<Item>, groupId: string, tripId: string): Promise<void>;
   drain(): Promise<void>;
   refreshPending(): Promise<void>;
+  /** Reconcile a cached server snapshot with the still-queued offline changes —
+   *  used to rebuild the optimistic view on an offline boot (§5/§10). */
+  snapshotItems(cacheItems: Item[]): Promise<Item[]>;
   start(): void;
   /** The op currently being sent (null between sends) — exposed for tests. */
   inFlightOpId(): string | null;
@@ -62,6 +66,10 @@ export function createReplayEngine(deps: ReplayDeps): ReplayEngine {
   async function refreshPending() {
     const all = await db.getAll();
     hooks.onPending([...new Set(all.map((o) => o.itemId))]);
+  }
+
+  async function snapshotItems(cacheItems: Item[]) {
+    return applyQueueToCache(cacheItems, await db.getAll());
   }
 
   async function enqueue(op: QueuedOp) {
@@ -182,6 +190,7 @@ export function createReplayEngine(deps: ReplayDeps): ReplayEngine {
     enqueuePatch: (itemId, patch, groupId, tripId) => enqueue(makeOp('patch', itemId, patch, groupId, tripId)),
     drain,
     refreshPending,
+    snapshotItems,
     start,
     inFlightOpId: () => inFlight,
   };

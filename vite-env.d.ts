@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_VAPID_PUBLIC_KEY?: string;
   // Offline write queue feature flag (docs/OFFLINE_PLAN.md §8).
   readonly VITE_OFFLINE_QUEUE?: string;
+  // Offline read-cache feature flag (docs/OFFLINE_PLAN.md §5/§10).
+  readonly VITE_OFFLINE_CACHE?: string;
 }
 
 interface ImportMeta {

@@ -19,6 +19,7 @@ import { setServerOffset, computeOffset } from '@/lib/serverTime';
 import { createItemWriter, type InnerItemWriter } from './itemWriter';
 import { createOpStore } from './queue/idb';
 import { createReplayEngine, type ReplayEngine } from './queue/replay';
+import { saveSnapshot, loadCachedSnapshot } from './queue/snapshot';
 
 // -----------------------------------------------------------------------------
 // Supabase sync layer (§6.3–6.4).
@@ -91,6 +92,9 @@ export function useSupabaseSync(): Sync {
   const presenceChannel = useRef<RealtimeChannel | null>(null);
   const currentTripId = useRef<string | null>(null);
   const groupId = useRef<string | null>(null);
+  // True when this boot fell back to the cached snapshot (offline) — the first
+  // reconnect then does a full re-bootstrap to re-establish realtime (§5/§10).
+  const offlineFallback = useRef(false);
 
   // Auth: track the session; long-lived + auto-refresh keeps people signed in
   // through a shop (§5.3).
@@ -197,6 +201,14 @@ export function useSupabaseSync(): Sync {
       if (cancelled) return;
       useStore.getState().loadSnapshot({ userId: session!.user.id, members, trip, items });
 
+      // Persist the server snapshot so an offline boot can show this list (§5/§10).
+      // Best-effort + cached items are the raw server rows (offline edits are
+      // re-applied from the queue on restore, so they're not double-counted).
+      if (CACHE_ENABLED) {
+        const { groups, userId } = useStore.getState();
+        void saveSnapshot({ userId, groups, trip, members, items, savedAt: Date.now() });
+      }
+
       if (currentTripId.current !== trip.id) {
         currentTripId.current = trip.id;
         subscribeItems(trip.id);
@@ -257,35 +269,73 @@ export function useSupabaseSync(): Sync {
       presenceChannel.current = channel;
     }
 
+    // Restore the cached snapshot for offline boot: show the last server state
+    // with the still-pending offline changes folded back in (§5/§10). Returns
+    // false (→ stay on the splash, the old behaviour) if there's no usable cache.
+    async function restoreFromCache(): Promise<boolean> {
+      const cache = await loadCachedSnapshot();
+      if (!cache || cancelled) return false;
+      useStore.getState().setGroups(cache.groups); // keep the switcher populated
+      // Only show a cached list if it's the group we're trying to view.
+      if (activeGroupId && cache.trip.group_id !== activeGroupId) return false;
+      groupId.current = cache.trip.group_id;
+      currentTripId.current = cache.trip.id;
+      const items = await reconcileWithQueue(cache.items);
+      if (cancelled) return false;
+      useStore.getState().loadSnapshot({ userId: cache.userId, members: cache.members, trip: cache.trip, items });
+      return true;
+    }
+
     (async () => {
-      const groups = await listMyGroups();
-      if (cancelled) return;
-      useStore.getState().setGroups(groups); // feed the switcher (§12)
-      if (groups.length === 0) {
-        setStatus('needs-group');
-        return;
+      offlineFallback.current = false;
+      try {
+        const groups = await listMyGroups();
+        if (cancelled) return;
+        useStore.getState().setGroups(groups); // feed the switcher (§12)
+        if (groups.length === 0) {
+          setStatus('needs-group');
+          return;
+        }
+        // Scope everything to the active group. Resolve the stored preference
+        // against the live list; if it differs (first run, or a stale id from a
+        // group we've left), reflect it and bail — the resulting activeGroupId
+        // change re-runs this effect, which then subscribes to the right group.
+        const resolved = resolveActiveGroup(groups, activeGroupId)!;
+        if (resolved !== activeGroupId) {
+          useStore.getState().setActiveGroup(resolved);
+          return;
+        }
+        groupId.current = resolved;
+        installWriter(reload);
+        subscribeTrips(resolved);
+        subscribePresence(resolved, session!.user.id);
+        await reload();
+        if (!cancelled) setStatus('ready');
+      } catch {
+        // Offline / backend unreachable at boot. Fall back to the cached list so
+        // the shop is usable and writes can queue, instead of hanging forever.
+        if (cancelled || !CACHE_ENABLED) return;
+        installWriter(reload); // ensure the queue engine exists (offline writes + drain on reconnect)
+        if (await restoreFromCache()) {
+          offlineFallback.current = true;
+          if (!cancelled) setStatus('ready');
+        }
       }
-      // Scope everything to the active group. Resolve the stored preference
-      // against the live list; if it differs (first run, or a stale id from a
-      // group we've left), reflect it and bail — the resulting activeGroupId
-      // change re-runs this effect, which then subscribes to the right group.
-      const resolved = resolveActiveGroup(groups, activeGroupId)!;
-      if (resolved !== activeGroupId) {
-        useStore.getState().setActiveGroup(resolved);
-        return;
-      }
-      groupId.current = resolved;
-      installWriter(reload);
-      subscribeTrips(resolved);
-      subscribePresence(resolved, session!.user.id);
-      await reload();
-      if (!cancelled) setStatus('ready');
     })();
 
     // Re-fetch on reconnect, and whenever the app comes back to the foreground —
     // mobile drops the Realtime socket in the background, so this keeps the list
-    // fresh even if a live event was missed (§6.4).
-    const onOnline = () => void reload();
+    // fresh even if a live event was missed (§6.4). After an offline-cache boot
+    // the first reconnect needs a full re-bootstrap (realtime was never wired), so
+    // bump the effect rather than just reloading.
+    const onOnline = () => {
+      if (offlineFallback.current) {
+        offlineFallback.current = false;
+        setTick((t) => t + 1);
+      } else {
+        void reload();
+      }
+    };
     const onVisible = () => {
       if (document.visibilityState === 'visible') void reload();
     };
@@ -329,6 +379,11 @@ function getItemWriter(sb: SupabaseClient<Database>): InnerItemWriter {
 // the online-only direct path (which then dead-code-eliminates the queue).
 const QUEUE_ENABLED = import.meta.env.VITE_OFFLINE_QUEUE !== '0';
 
+// Offline read-cache feature flag (docs/OFFLINE_PLAN.md §5/§10). Ships dark first
+// (on only when VITE_OFFLINE_CACHE === '1'); when off, the snapshot persist +
+// offline-boot restore are inert and the boot path is unchanged.
+const CACHE_ENABLED = import.meta.env.VITE_OFFLINE_CACHE === '1';
+
 // The global replay engine — one durable queue across all groups (§5). Created
 // once and reused; its online/visibility listeners live for the app's lifetime.
 let _engine: ReplayEngine | null = null;
@@ -356,6 +411,12 @@ function getEngine(inner: InnerItemWriter): ReplayEngine {
   });
   _engine.start();
   return _engine;
+}
+
+// Fold the still-pending offline ops into a cached server snapshot so an offline
+// boot shows changes made since the last sync. No engine (queue off) → cache as-is.
+function reconcileWithQueue(cacheItems: Item[]): Promise<Item[]> {
+  return _engine ? _engine.snapshotItems(cacheItems) : Promise.resolve(cacheItems);
 }
 
 type ItemWrites = Pick<RemoteWriter, 'insertItem' | 'patchItem'>;
