@@ -84,10 +84,18 @@ patch is LWW), gated on a real connectivity probe (`fetchServerTime`) with bound
 backoff, and drops only genuinely un-saveable ops (RLS-fatal / attempts exhausted)
 with a consolidated toast — never silently. The OfflineBanner now shows "N changes
 will sync" / "Syncing N…". Behind `VITE_OFFLINE_QUEUE` (on by default; set '0' to
-kill-switch). Design + as-built deviations: docs/OFFLINE_PLAN.md. Deferred to a
-later pass: queuing trip-lifecycle ops, Background Sync, and persisting the
-optimistic read-cache so offline-added items also show after a restart *while
-still offline*.
+kill-switch). Design + as-built deviations: docs/OFFLINE_PLAN.md.
+
+**Offline read-cache (also shipped).** The app was online-first for reads, so a
+cold boot with no signal hung on the splash. It now persists the last server
+snapshot to a dedicated IndexedDB database and, on an offline boot, restores it
+with pending offline changes folded in — so the list is usable offline (and
+offline-added items survive a restart). First reconnect re-bootstraps to resume
+realtime. Behind `VITE_OFFLINE_CACHE` (on by default; '0' kill-switches).
+
+Still deferred (need a decision / lower value): **queuing trip-lifecycle ops**
+(start/cancel/complete/take-over — semantically fraught: RLS races, id rollover)
+and **Background Sync** (writes need the window, not the service worker).
 
 ## 🔴 Tier A — your call (not auto-merged)
 

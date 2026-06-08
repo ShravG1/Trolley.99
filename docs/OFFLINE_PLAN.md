@@ -356,11 +356,20 @@ Deviations from the plan above, each made to avoid silently losing a write:
   the `loadSnapshot` guard. The pending count is global (all groups), not
   per-group-filtered (deferred; the plan flags filtering as optional).
 
-Still deferred (Phase 2): persisting the optimistic read-cache so offline-added
-items reappear after a PWA restart *while still offline* (today the durable queue
-guarantees the write isn't lost — it replays + echoes back on reconnect — but the
-item isn't shown until then). Trip-lifecycle queueing and Background Sync remain
-out of scope.
+**Phase 2 — offline read-cache (shipped).** `src/sync/queue/snapshot.ts` persists
+the last server snapshot (trip + members + items + groups) to a dedicated IDB
+database after each online reload. On an offline boot the bootstrap's catch
+restores it and folds the still-pending offline ops back in (`applyQueueToCache`
+/ `engine.snapshotItems`), so the app shows "the last list we had" + your offline
+changes instead of hanging on the splash — and offline-added items now survive a
+restart-while-offline. The first reconnect (online event, or a foreground while
+`navigator.onLine`) does a full re-bootstrap to resume realtime. Behind
+`VITE_OFFLINE_CACHE`; the online path is untouched (cache write is additive +
+guarded; restore only runs when the network bootstrap throws).
+
+Still deferred: **trip-lifecycle queueing** (semantically fraught — needs a design
+decision, see §3/§8) and **Background Sync** (low value; writes need the window,
+not the SW — see §8 Phase 2).
 
 **Flag:** `VITE_OFFLINE_QUEUE`. Phase 1 ships dark (on only when `=== '1'`); when
 off the queue branch is dead-code-eliminated, so the build is behaviourally the
