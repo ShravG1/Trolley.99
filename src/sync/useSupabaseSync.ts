@@ -328,7 +328,9 @@ export function useSupabaseSync(): Sync {
     // fresh even if a live event was missed (§6.4). After an offline-cache boot
     // the first reconnect needs a full re-bootstrap (realtime was never wired), so
     // bump the effect rather than just reloading.
-    const onOnline = () => {
+    const reconnect = () => {
+      // After an offline-cache boot, realtime was never wired — re-bootstrap fully
+      // rather than just reloading. Otherwise (the normal case) a light reload.
       if (offlineFallback.current) {
         offlineFallback.current = false;
         setTick((t) => t + 1);
@@ -336,8 +338,13 @@ export function useSupabaseSync(): Sync {
         void reload();
       }
     };
+    const onOnline = () => reconnect();
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void reload();
+      if (document.visibilityState !== 'visible') return;
+      // Don't re-bootstrap while still offline (it would just flash the splash and
+      // re-restore the cache); a plain reload is a harmless no-op when offline.
+      if (offlineFallback.current && !navigator.onLine) void reload();
+      else reconnect();
     };
     window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', onVisible);
@@ -379,10 +386,10 @@ function getItemWriter(sb: SupabaseClient<Database>): InnerItemWriter {
 // the online-only direct path (which then dead-code-eliminates the queue).
 const QUEUE_ENABLED = import.meta.env.VITE_OFFLINE_QUEUE !== '0';
 
-// Offline read-cache feature flag (docs/OFFLINE_PLAN.md §5/§10). Ships dark first
-// (on only when VITE_OFFLINE_CACHE === '1'); when off, the snapshot persist +
-// offline-boot restore are inert and the boot path is unchanged.
-const CACHE_ENABLED = import.meta.env.VITE_OFFLINE_CACHE === '1';
+// Offline read-cache feature flag (docs/OFFLINE_PLAN.md §5/§10). On by default
+// now the dark deploy is verified; set VITE_OFFLINE_CACHE='0' to kill-switch back
+// to online-only reads (the snapshot persist + offline-boot restore go inert).
+const CACHE_ENABLED = import.meta.env.VITE_OFFLINE_CACHE !== '0';
 
 // The global replay engine — one durable queue across all groups (§5). Created
 // once and reused; its online/visibility listeners live for the app's lifetime.
