@@ -7,6 +7,7 @@ import { withViewTransition } from '@/lib/viewTransition';
 import { viewerNames } from '@/lib/presence';
 import { markEnteredList } from '@/lib/landing';
 import { serverNow } from '@/lib/serverTime';
+import { useOnline } from '@/lib/useOnline';
 import type { Item } from '@/types/models';
 
 import { ItemRow } from '@/components/ItemRow';
@@ -43,6 +44,13 @@ export function Home() {
   const cancelShopping = useStore((s) => s.cancelShopping);
   const finishTrip = useStore((s) => s.finishTrip);
   const takeOverShopping = useStore((s) => s.takeOverShopping);
+  const remote = useStore((s) => s.remote);
+  const online = useOnline();
+  // Item adds/ticks queue offline and replay (the offline queue). Trip lifecycle
+  // (start/cancel/finish/take-over) still needs the network — but only with a real
+  // backend; demo mode runs these locally, so don't block it. Surface the limit at
+  // the control rather than letting the action fail with a misleading toast.
+  const lifecycleBlocked = !online && remote != null;
 
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
@@ -189,7 +197,8 @@ export function Home() {
           <>
             <PrimaryPill
               onClick={() => setStartOpen(true)}
-              disabled={false}
+              disabled={lifecycleBlocked}
+              disabledHint="Offline — connect to start a shop"
             >
               I’m going shopping
             </PrimaryPill>
@@ -199,31 +208,43 @@ export function Home() {
 
         {mode === 'shopping' && (
           <>
-            {stale && (
+            {stale && !lifecycleBlocked && (
               <div className="rounded-md bg-urgent-tint px-4 py-2 text-center text-meta font-semibold text-urgent">
                 Still shopping? Tick something or finish the trip so the others aren’t left waiting.
               </div>
             )}
-            <div className="flex gap-2">
-              <PrimaryPill variant="neutral" onClick={() => withViewTransition(cancelShopping)}>
-                Cancel
-              </PrimaryPill>
-              <PrimaryPill
-                onClick={() => {
-                  // Be smart: only ask if there's something un-ticked to lose.
-                  if (unbought > 0) setFinishConfirm(true);
-                  else withViewTransition(finishTrip);
-                }}
-              >
-                Finish the trip
-              </PrimaryPill>
-            </div>
+            {lifecycleBlocked ? (
+              // Ticking items still works offline (it queues); finishing/cancelling
+              // the trip is a server transition, so explain rather than fail.
+              <div className="rounded-md bg-surface-2 px-4 py-2 text-center text-meta font-semibold text-ink-soft">
+                Offline — keep ticking items; finish or cancel the trip when you’re back.
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <PrimaryPill variant="neutral" onClick={() => withViewTransition(cancelShopping)}>
+                  Cancel
+                </PrimaryPill>
+                <PrimaryPill
+                  onClick={() => {
+                    // Be smart: only ask if there's something un-ticked to lose.
+                    if (unbought > 0) setFinishConfirm(true);
+                    else withViewTransition(finishTrip);
+                  }}
+                >
+                  Finish the trip
+                </PrimaryPill>
+              </div>
+            )}
           </>
         )}
 
         {mode === 'spectator' && (
           stale ? (
-            <PrimaryPill onClick={() => withViewTransition(takeOverShopping)}>
+            <PrimaryPill
+              onClick={() => withViewTransition(takeOverShopping)}
+              disabled={lifecycleBlocked}
+              disabledHint="Offline — connect to take over"
+            >
               {shopperName} went quiet — take over the shop
             </PrimaryPill>
           ) : canAdd ? (
