@@ -1,0 +1,40 @@
+# CODEOWNERS — protected paths require the owner's review (CONTRACT §8/§10).
+#
+# These are the same "an autonomous engine may NEVER touch this without review"
+# paths the policy gate (scripts/policy-gate.mjs / lib/policy.ts) classifies as
+# Tier C. CODEOWNERS makes GitHub *request* @ShravG1's review on any PR touching
+# them; with branch protection requiring code-owner review, that review becomes
+# mandatory. The CI policy-gate is the belt to this braces: it goes red on an
+# engine-authored PR that touches these, so the autonomous merger can't slip one
+# through even before branch protection is on.
+#
+# Everything else has no owner here on purpose — only the protected set needs the
+# gate. Order matters: later patterns win, so the catch-all is first.
+
+# (no default owner — unprotected paths don't force review)
+
+# Secrets / environment
+.env*                       @ShravG1
+**/.env*                    @ShravG1
+
+# CI / automation / this file itself
+/.github/                   @ShravG1
+/CODEOWNERS                 @ShravG1
+
+# Auth, middleware, request edge
+/lib/auth.ts                @ShravG1
+/middleware.*               @ShravG1
+/lib/mutations.ts           @ShravG1
+
+# Deploy / build config
+/vercel.json                @ShravG1
+/vercel.ts                  @ShravG1
+/next.config.*              @ShravG1
+
+# Database schema / migrations
+**/migrations/**            @ShravG1
+*.sql                       @ShravG1
+
+# The policy manifest and the contract themselves
+*.policy.json               @ShravG1
+/CONTRACT.md                @ShravG1

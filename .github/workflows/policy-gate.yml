@@ -1,0 +1,36 @@
+name: policy-gate
+
+# The CONTRACT §8/§10 policy gate. Fails an ENGINE-authored PR (branch on the
+# autopilot/ or claude/ prefix) that touches secrets/auth/CI/deploy/schema paths
+# or a financial repo — so the autonomous merger can never land one on green.
+# Human PRs pass straight through (Shrav is the reviewer, not a breach). Make this
+# a REQUIRED status check in branch protection so it actually blocks the merge.
+on:
+  pull_request:
+
+concurrency:
+  group: policy-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: policy gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run policy gate
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+          CHANGED_FILES="$(git diff --name-only "origin/$BASE_REF...HEAD")"
+          export CHANGED_FILES
+          echo "Changed files:"; echo "$CHANGED_FILES"
+          node scripts/policy-gate.mjs
