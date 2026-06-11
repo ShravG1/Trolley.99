@@ -163,10 +163,10 @@ export function ItemSheet({ item, onClose }: Props) {
             </button>
           </label>
 
-          <div className="grid grid-cols-3 gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <button
               onClick={() => setSubbing(true)}
-              className="rounded-md border border-line py-3 text-meta font-semibold text-sub"
+              className="min-h-11 flex-1 basis-20 rounded-md border border-line py-3 text-meta font-semibold text-sub"
             >
               Substitute
             </button>
@@ -175,7 +175,7 @@ export function ItemSheet({ item, onClose }: Props) {
                 markNotFound(item.id);
                 onClose();
               }}
-              className="rounded-md border border-line py-3 text-meta font-semibold text-ink-soft"
+              className="min-h-11 flex-1 basis-20 rounded-md border border-line py-3 text-meta font-semibold text-ink-soft"
             >
               Not found
             </button>
@@ -184,7 +184,7 @@ export function ItemSheet({ item, onClose }: Props) {
                 deleteItem(item.id);
                 onClose();
               }}
-              className="rounded-md border border-line py-3 text-meta font-semibold text-bin"
+              className="min-h-11 flex-1 basis-20 rounded-md border border-line py-3 text-meta font-semibold text-bin"
             >
               Delete
             </button>

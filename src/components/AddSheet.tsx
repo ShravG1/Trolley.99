@@ -109,15 +109,15 @@ export function AddSheet({ open, onClose }: Props) {
           {/* Editable aisle tag (§2.4) — taps to reveal an inline chip grid. */}
           <button
             onClick={() => setAisleOpen((o) => !o)}
-            className="flex items-center gap-2 rounded-pill border border-line px-3 py-2 text-meta font-semibold"
+            className="flex min-w-0 items-center gap-2 rounded-pill border border-line px-3 py-2 text-meta font-semibold"
             style={{ color: aisleColor(aisle) }}
           >
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: aisleColor(aisle) }} />
-            {AISLES[aisle].label}
-            <span className="text-ink-faint">{aisleOpen ? '▴' : '▾'}</span>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: aisleColor(aisle) }} />
+            <span className="truncate">{AISLES[aisle].label}</span>
+            <span className="shrink-0 text-ink-faint">{aisleOpen ? '▴' : '▾'}</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <input
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
