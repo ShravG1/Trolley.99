@@ -34,7 +34,10 @@ export const supabase: SupabaseClient<Database> | null = isSupabaseConfigured()
 
 /** Best-effort server clock from the REST endpoint's `Date` header (§6.5). Used
  * only to correct the UI's window/staleness checks for a skewed device clock —
- * never a security boundary (RLS judges the real now()). Null on any failure. */
+ * never a security boundary (RLS judges the real now()). Null on any failure.
+ * NB: cross-origin browsers can't read `Date` (it isn't CORS-exposed), so this is
+ * often null in production — fine for its best-effort use, but it must NOT be
+ * reused as a connectivity probe (see probeConnectivity). */
 export async function fetchServerTime(): Promise<number | null> {
   if (!url || !anonKey) return null;
   try {
@@ -44,6 +47,22 @@ export async function fetchServerTime(): Promise<number | null> {
     return Number.isFinite(ms) ? ms : null;
   } catch {
     return null;
+  }
+}
+
+/** Real connectivity check for the offline write queue (§4): true if a request to
+ * Supabase actually completes (any HTTP status — even a 401), false only if it
+ * throws (a genuine network failure). Deliberately header-free so it stays a
+ * CORS-simple request: Supabase returns `access-control-allow-origin: *` on it,
+ * so the browser can read the response and fetch resolves. (fetchServerTime can't
+ * do this job — its Date header is null cross-origin.) */
+export async function probeConnectivity(): Promise<boolean> {
+  if (!url) return false;
+  try {
+    await fetch(`${url}/rest/v1/`, { method: 'HEAD' });
+    return true;
+  } catch {
+    return false;
   }
 }
 
