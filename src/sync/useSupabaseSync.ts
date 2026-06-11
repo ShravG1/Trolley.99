@@ -7,6 +7,7 @@ import {
   signInAnonymously,
   setAnonymousFlag,
   fetchServerTime,
+  probeConnectivity,
   ensureSession,
 } from '@/lib/supabase';
 import { useStore } from '@/store/useStore';
@@ -402,9 +403,10 @@ function getEngine(inner: InnerItemWriter): ReplayEngine {
   _engine = createReplayEngine({
     db: createOpStore(),
     inner,
-    // Real connectivity — fetchServerTime is a cheap authenticated HEAD that also
-    // catches Supabase-down, not just internet-down (§4).
-    probe: async () => (await fetchServerTime()) !== null,
+    // Real connectivity probe (§4) — completes against Supabase = online; throws =
+    // offline. (Must NOT use fetchServerTime: its Date header is null cross-origin,
+    // so it always read "offline" and the queue never drained.)
+    probe: probeConnectivity,
     ensureSession,
     hooks: {
       onPending: (ids) => useStore.getState().setPendingWriteIds(ids),
