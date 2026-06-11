@@ -381,6 +381,16 @@ export async function leaveGroup(groupId: string): Promise<void> {
   const { error } = await supabase.rpc('leave_group', { p_group_id: groupId });
   if (error) throw error;
 }
+/** Delete a whole list/group — creator only (RLS `groups_delete` gates on
+ * created_by = auth.uid()); the FK cascades remove its trips/items/members/
+ * invites. Returns true if a row was actually deleted; false means RLS removed
+ * nothing (you're a member but not the creator → offer "leave" instead). */
+export async function deleteGroup(groupId: string): Promise<boolean> {
+  if (!supabase) return false;
+  const { data, error } = await supabase.from('groups').delete().eq('id', groupId).select('id');
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}
 export async function clearHistory(groupId: string): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.rpc('clear_history', { p_group_id: groupId });
