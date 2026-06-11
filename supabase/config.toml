@@ -18,7 +18,11 @@ refresh_token_reuse_interval = 10
 # it's applied (§5.3) — matches the live project (mailer_autoconfirm=false) so the
 # backup email is actually proven. The AccountBackup UI already waits on the link.
 enable_confirmations = true
-secure_email_change = true
+# Confirm an email change on BOTH the old and new address. The Supabase CLI renamed
+# this key from `secure_email_change` → `double_confirm_changes`; the old name now
+# fails config parsing (`supabase start`), which was reddening the rls CI job. This
+# is LOCAL/CI config only — production auth is configured in the Supabase dashboard.
+double_confirm_changes = true
 # Short single-use magic links; rate-limited send guards email bombing (§5.6).
 max_frequency = "60s"
 
