@@ -21,18 +21,26 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
-const SWIPE_THRESHOLD = 72;
+const SWIPE_RIGHT = 72; // swipe right past this → mark bought
+const REVEAL_W = 92; // width of the revealed Delete button
+const REVEAL_TRIGGER = 44; // swipe left past this → open (step 1) / confirm delete once open (step 2)
 
 // ItemRow (§2.3) — all states, both densities, swipe actions, aisle tab.
 // State is icon + text + position + colour, never colour alone (§1.8).
-// Memoised: with the row callbacks now stable (selected, not destructured) only
-// the rows whose item actually changed re-render on a realtime/optimistic update.
+// Delete is a two-step swipe (§2.3): a left swipe REVEALS a Delete button that
+// stays in view; tapping it — or swiping left again — confirms. A stray full
+// swipe can no longer bin an item outright. Tap the row to dismiss the reveal.
+// Memoised: with stable row callbacks, only rows whose item changed re-render.
 export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onDelete }: Props) {
   const [dx, setDx] = useState(0);
+  const [revealed, setRevealed] = useState(false);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
   const axisLocked = useRef<'x' | 'y' | null>(null);
   const swiping = useRef(false);
+  // After a horizontal swipe the browser still fires a click; swallow it so the
+  // reveal we just opened isn't immediately dismissed (or an edit opened).
+  const suppressClick = useRef(false);
   const rowRef = useRef<HTMLDivElement>(null);
 
   const done = item.status === 'bought' || item.status === 'substituted';
@@ -48,13 +56,14 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
     startY.current = e.clientY;
     swiping.current = true;
     axisLocked.current = null;
+    suppressClick.current = false;
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!swiping.current || startX.current === null || startY.current === null) return;
     const dxNow = e.clientX - startX.current;
     const dyNow = e.clientY - startY.current;
-    // Axis lock: decide once whether this gesture is a horizontal swipe or a
-    // vertical scroll, so swiping never fights the list scrolling (§2.3 mobile).
+    // Axis lock: decide once whether this is a horizontal swipe or a vertical
+    // scroll, so swiping never fights the list scrolling (§2.3 mobile).
     if (axisLocked.current === null && Math.abs(dxNow) + Math.abs(dyNow) > 8) {
       axisLocked.current = Math.abs(dxNow) > Math.abs(dyNow) ? 'x' : 'y';
     }
@@ -71,18 +80,38 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
       return;
     }
     swiping.current = false;
-    // A full swipe LEFT deletes outright (with an Undo toast); a swipe RIGHT
-    // marks bought. Substitute / Not found live in the row's ⋯ menu (§2.3).
-    const width = rowRef.current?.offsetWidth ?? 320;
-    const deleteThreshold = Math.max(120, width * 0.45);
-    if (dx > SWIPE_THRESHOLD && !done) {
-      onBought(item.id);
-    } else if (-dx > deleteThreshold) {
-      onDelete(item.id);
-    }
+    const wasX = axisLocked.current === 'x';
+    const delta = dx;
     setDx(0);
     startX.current = null;
     startY.current = null;
+    axisLocked.current = null;
+    if (!wasX) return;
+    if (Math.abs(delta) > 8) suppressClick.current = true; // it was a swipe, not a tap
+
+    if (!revealed) {
+      // Closed: right → bought; left far enough → reveal the Delete button (step 1).
+      if (delta > SWIPE_RIGHT && !done) onBought(item.id);
+      else if (-delta >= REVEAL_TRIGGER) setRevealed(true);
+    } else {
+      // Open: left again → delete (step 2); right → dismiss; small → stay open.
+      if (-delta >= REVEAL_TRIGGER) onDelete(item.id);
+      else if (delta > SWIPE_RIGHT) setRevealed(false);
+    }
+  };
+
+  // A tap (not a swipe) on the row: dismiss the reveal if open, else the normal
+  // action. Returns true if it handled a dismiss/suppressed click, so callers stop.
+  const tapHandled = (): boolean => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return true;
+    }
+    if (revealed) {
+      setRevealed(false);
+      return true;
+    }
+    return false;
   };
 
   // State → icon + colour
@@ -108,24 +137,28 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
       ? 'var(--sub-tint)'
       : aisleTint(item.category);
 
-  const willDelete = -dx > Math.max(120, (rowRef.current?.offsetWidth ?? 320) * 0.45);
+  const base = revealed ? -REVEAL_W : 0;
+  const liveX = Math.max(-(REVEAL_W + 80), Math.min(96, base + dx));
 
   return (
     <div className="relative overflow-hidden" style={{ viewTransitionName: `item-${item.id}` }}>
-      {/* Swipe reveals (icon-led, never colour-only): right = Bought, full left = Delete */}
-      <div
-        className="absolute inset-0 flex items-center justify-between px-5"
-        style={{ backgroundColor: willDelete ? 'var(--bin)' : undefined }}
-      >
-        <span className="flex items-center gap-2 font-semibold" style={{ color: 'var(--brand)' }}>
+      {/* Reveals behind the row: right = Bought (swipe →); left = a real Delete
+          button (swipe ←) that stays put until tapped or swiped again. */}
+      <div className="absolute inset-0 flex items-stretch justify-between">
+        <span className="flex items-center gap-2 px-5 font-semibold" style={{ color: 'var(--brand)' }} aria-hidden="true">
           <BoughtIcon /> Bought
         </span>
-        <span
-          className="flex items-center gap-2 font-semibold"
-          style={{ color: willDelete ? 'var(--on-brand)' : 'var(--bin)' }}
+        <button
+          type="button"
+          onClick={() => onDelete(item.id)}
+          tabIndex={revealed ? 0 : -1}
+          aria-hidden={!revealed}
+          aria-label={`Delete ${item.name}`}
+          className="flex shrink-0 items-center justify-center gap-2 font-semibold text-on-brand"
+          style={{ width: REVEAL_W, backgroundColor: 'var(--bin)' }}
         >
-          {willDelete ? 'Release to delete' : 'Swipe to delete'} <BinIcon />
-        </span>
+          <BinIcon /> Delete
+        </button>
       </div>
 
       <div
@@ -135,8 +168,8 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
           ${done ? 'opacity-50' : notFound ? 'opacity-70' : ''}`}
         style={{
           backgroundColor: rowBg,
-          transform: dx ? `translateX(${dx}px)` : undefined,
-          transition: dx ? 'none' : undefined,
+          transform: `translateX(${liveX}px)`,
+          transition: dx !== 0 ? 'none' : undefined,
           touchAction: 'pan-y', // allow vertical scroll; we own horizontal swipe
         }}
         onPointerDown={onPointerDown}
@@ -151,9 +184,12 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
           aria-hidden="true"
         />
 
-        {/* Checkbox / state icon — tap = bought */}
+        {/* Checkbox / state icon — tap = bought (or dismiss an open reveal) */}
         <button
-          onClick={() => !readOnly && !done && onBought(item.id)}
+          onClick={() => {
+            if (tapHandled()) return;
+            if (!readOnly && !done) onBought(item.id);
+          }}
           disabled={readOnly || done}
           aria-label={done ? `${item.name}, ${item.status}` : `Mark ${item.name} as bought`}
           className="grid h-11 w-11 shrink-0 place-items-center rounded-pill"
@@ -162,10 +198,13 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
           <Icon className={done ? 'anim-tick-pop' : undefined} />
         </button>
 
-        {/* Body — tap = edit */}
+        {/* Body — tap = edit (or dismiss an open reveal) */}
         <button
           className="flex min-w-0 flex-1 flex-col items-start py-2 text-left"
-          onClick={() => !readOnly && onEdit(item)}
+          onClick={() => {
+            if (tapHandled()) return;
+            if (!readOnly) onEdit(item);
+          }}
         >
           <span
             className={`truncate font-medium text-ink ${density === 'shopping' ? 'text-[18px]' : 'text-item'} ${
@@ -188,7 +227,10 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
         {/* Overflow — deletes outright on a done row, else opens the actions sheet */}
         {!readOnly && (
           <button
-            onClick={() => (done ? onDelete(item.id) : onMenu(item))}
+            onClick={() => {
+              if (tapHandled()) return;
+              done ? onDelete(item.id) : onMenu(item);
+            }}
             aria-label={done ? `Delete ${item.name}` : `More options for ${item.name}`}
             className="grid h-11 w-11 shrink-0 place-items-center text-ink-faint hover:text-ink"
           >
