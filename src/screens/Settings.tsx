@@ -100,14 +100,14 @@ export function Settings() {
         {inviteLink ? (
           <div className="space-y-3">
             {/* The short code, for anyone who'd rather type it into "Join". */}
-            <div className="flex items-center justify-between rounded-xs bg-surface-2 px-3 py-2">
-              <div>
+            <div className="flex items-center justify-between gap-3 rounded-xs bg-surface-2 px-3 py-2">
+              <div className="min-w-0">
                 <span className="block text-caption uppercase tracking-wide text-ink-faint">Code</span>
                 <span className="font-mono text-item tracking-[0.15em] text-ink">{code}</span>
               </div>
               <button
                 onClick={copyCode}
-                className="min-h-11 rounded-pill border border-line px-4 text-meta font-semibold text-ink"
+                className="shrink-0 min-h-11 rounded-pill border border-line px-4 text-meta font-semibold text-ink"
               >
                 {codeCopied ? 'Copied' : 'Copy code'}
               </button>
@@ -150,7 +150,7 @@ export function Settings() {
                   }}
                 />
               ) : (
-                <span className="text-item text-ink">{m.display_name}</span>
+                <span className="min-w-0 truncate text-item text-ink">{m.display_name}</span>
               )}
               <span className="shrink-0 text-meta text-ink-faint">{m.user_id === userId ? 'you' : 'member'}</span>
             </li>
@@ -180,10 +180,10 @@ export function Settings() {
 
       {/* Reporting gate */}
       <Section title="Reporting">
-        <label className="flex items-center justify-between">
-          <span className="flex flex-col">
+        <label className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 flex-col">
             <span className="text-item text-ink">Track who buys what</span>
-            <span className="max-w-[16rem] text-meta text-ink-soft">
+            <span className="text-meta text-ink-soft">
               Off by default. A bit of fun — but it profiles everyone in the group, so it’s opt-in and deletable.
             </span>
           </span>
@@ -273,7 +273,7 @@ function AccountBackup() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@email.com"
-          className="flex-1 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink"
+          className="min-w-0 flex-1 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink"
         />
         <button
           onClick={async () => {
@@ -286,7 +286,7 @@ function AccountBackup() {
               setError('Couldn’t save that — try a different email.');
             }
           }}
-          className="min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand"
+          className="shrink-0 min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand"
         >
           Save
         </button>
@@ -411,8 +411,8 @@ function FeedbackForm({ groupId }: { groupId: string }) {
         rows={4}
         className="w-full resize-none rounded-md border border-line bg-surface-2 px-3 py-2 text-body text-ink placeholder:text-ink-faint focus:border-brand"
       />
-      <div className="mt-2 flex items-center gap-3">
-        <label className="min-h-11 cursor-pointer rounded-pill border border-line px-4 text-meta font-semibold leading-[44px] text-ink">
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <label className="shrink-0 min-h-11 cursor-pointer rounded-pill border border-line px-4 text-meta font-semibold leading-[44px] text-ink">
           {shot ? 'Change screenshot' : 'Add screenshot'}
           <input
             type="file"
@@ -422,9 +422,9 @@ function FeedbackForm({ groupId }: { groupId: string }) {
           />
         </label>
         {shot && (
-          <span className="flex items-center gap-1 text-meta text-ink-soft">
-            <span className="max-w-[8rem] truncate">{shot.name}</span>
-            <button onClick={() => setShot(null)} aria-label="Remove screenshot" className="text-ink-faint hover:text-bin">
+          <span className="flex min-w-0 items-center gap-1 text-meta text-ink-soft">
+            <span className="min-w-0 truncate">{shot.name}</span>
+            <button onClick={() => setShot(null)} aria-label="Remove screenshot" className="shrink-0 text-ink-faint hover:text-bin">
               ✕
             </button>
           </span>
@@ -566,12 +566,12 @@ function RecurringManager() {
     <div>
       <ul className="divide-y divide-line">
         {data.map((r) => (
-          <li key={r.id} className="flex items-center justify-between py-3">
-            <span className="flex flex-col">
-              <span className="text-item text-ink">{r.name}</span>
+          <li key={r.id} className="flex items-center justify-between gap-3 py-3">
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-item text-ink">{r.name}</span>
               <span className="text-meta text-ink-soft">{RULE_LABELS[r.recurrence_rule] ?? r.recurrence_rule}</span>
             </span>
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               <Toggle
                 on={r.active}
                 label={`${r.name} recurring`}
@@ -598,7 +598,7 @@ function RecurringManager() {
       </ul>
 
       {live && (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -612,7 +612,7 @@ function RecurringManager() {
             value={newRule}
             onChange={(e) => setNewRule(e.target.value)}
             aria-label="How often"
-            className="rounded-xs border border-line bg-surface-2 px-2 py-2 text-meta text-ink"
+            className="shrink-0 rounded-xs border border-line bg-surface-2 px-2 py-2 text-meta text-ink"
           >
             {Object.entries(RULE_LABELS).map(([v, l]) => (
               <option key={v} value={v}>
@@ -620,7 +620,7 @@ function RecurringManager() {
               </option>
             ))}
           </select>
-          <button onClick={add} className="min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
+          <button onClick={add} className="shrink-0 min-h-11 rounded-pill bg-brand px-4 text-meta font-semibold text-on-brand">
             Add
           </button>
         </div>

@@ -84,9 +84,9 @@ export function ItemSheet({ item, onClose }: Props) {
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-item text-ink">Quantity</span>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="shrink-0 text-item text-ink">Quantity</span>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <input
                 value={unit}
                 onChange={(e) => setUnitVal(e.target.value)}
@@ -145,13 +145,13 @@ export function ItemSheet({ item, onClose }: Props) {
             </div>
           </div>
 
-          <label className="flex items-center justify-between rounded-md bg-surface-2 px-4 py-3">
+          <label className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-4 py-3">
             <span className="text-item text-ink">Urgent</span>
             <button
               role="switch"
               aria-checked={item.priority === 'urgent'}
               onClick={() => toggleUrgent(item.id)}
-              className={`relative h-7 w-12 rounded-pill transition-colors ${
+              className={`relative h-7 w-12 shrink-0 rounded-pill transition-colors ${
                 item.priority === 'urgent' ? 'bg-urgent' : 'bg-line'
               }`}
             >
