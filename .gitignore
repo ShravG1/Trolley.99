@@ -26,3 +26,6 @@ npm-debug.log*
 
 # scratch icon previews
 icon-previews/
+
+# Claude Code agent worktrees (transient)
+.claude/worktrees/
