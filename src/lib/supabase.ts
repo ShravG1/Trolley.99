@@ -189,9 +189,17 @@ export async function createInvite(
  * multi-group switcher (§12). Oldest-first for a stable switcher order. */
 export async function listMyGroups(): Promise<MyGroup[]> {
   if (!supabase) return [];
+  // Filter to the caller's OWN membership rows only. The gm_read RLS policy
+  // allows reading ALL members of groups you belong to (so the Settings member
+  // list works), so without this filter the query returns one MyGroup entry per
+  // member per group — a group shared with 3 people would appear 3 times in
+  // the switcher, each showing a different member's display_name.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from('group_members')
     .select('group_id, display_name, joined_at, groups(name)')
+    .eq('user_id', user.id)
     .order('joined_at', { ascending: true });
   if (error) throw error;
   return (data ?? []).map((r) => {
@@ -384,12 +392,24 @@ export async function leaveGroup(groupId: string): Promise<void> {
 /** Delete a whole list/group — creator only (RLS `groups_delete` gates on
  * created_by = auth.uid()); the FK cascades remove its trips/items/members/
  * invites. Returns true if a row was actually deleted; false means RLS removed
- * nothing (you're a member but not the creator → offer "leave" instead). */
+ * nothing (you're a member but not the creator → offer "leave" instead).
+ *
+ * NOTE: do NOT chain .select() here. After a successful delete the cascade also
+ * removes the caller's group_members row, so RETURNING rows would fail the
+ * groups_read RLS check (is_member calls group_members, which is now empty for
+ * this group) and PostgREST would return 0 rows even for a successful delete —
+ * making the UI show "only the creator can delete" for the actual creator.
+ * Use { count: 'exact' } instead: Supabase sets Prefer:count=exact and reads
+ * the deleted-row count from Content-Range, which is set before RETURNING runs.
+ */
 export async function deleteGroup(groupId: string): Promise<boolean> {
   if (!supabase) return false;
-  const { data, error } = await supabase.from('groups').delete().eq('id', groupId).select('id');
+  const { error, count } = await supabase
+    .from('groups')
+    .delete({ count: 'exact' })
+    .eq('id', groupId);
   if (error) throw error;
-  return (data?.length ?? 0) > 0;
+  return (count ?? 0) > 0;
 }
 export async function clearHistory(groupId: string): Promise<void> {
   if (!supabase) return;

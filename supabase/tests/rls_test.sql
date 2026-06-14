@@ -82,14 +82,13 @@ select is(
   (select count(*) from items where name = 'sneaky')::int, 0,
   'no sneaky row landed');
 
--- An UPDATE that RLS filters out affects 0 rows (no error) — so prove the trip
--- is UNCHANGED rather than expecting a throw.
-update trips set status = 'shopping' where id = :'trip_a';
-select act_as('11111111-1111-1111-1111-111111111111');
-select is(
-  (select status::text from trips where id = :'trip_a'), 'active',
-  'B cannot mutate A''s trip (RLS made it a no-op)');
-select act_as('22222222-2222-2222-2222-222222222222');
+-- Direct trip writes are revoked entirely (migration 0008): every meaningful
+-- transition goes through a SECURITY DEFINER RPC, so no client may UPDATE a trip
+-- row directly. The grant layer rejects it (42501) before RLS is even consulted.
+select throws_ok(
+  format($$ update trips set status = 'shopping' where id = %L $$, :'trip_a'),
+  '42501', NULL,
+  'a client cannot UPDATE a trip row directly (transitions are RPC-only)');
 
 -- B cannot self-insert into A's membership (no client insert grant; RPC only).
 select throws_ok(

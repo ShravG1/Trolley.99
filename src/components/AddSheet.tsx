@@ -105,11 +105,11 @@ export function AddSheet({ open, onClose }: Props) {
           ))}
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Editable aisle tag (§2.4) — taps to reveal an inline chip grid. */}
           <button
             onClick={() => setAisleOpen((o) => !o)}
-            className="flex min-w-0 items-center gap-2 rounded-pill border border-line px-3 py-2 text-meta font-semibold"
+            className="flex min-w-0 shrink items-center gap-2 rounded-pill border border-line px-3 py-2 text-meta font-semibold"
             style={{ color: aisleColor(aisle) }}
           >
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: aisleColor(aisle) }} />
@@ -117,7 +117,7 @@ export function AddSheet({ open, onClose }: Props) {
             <span className="shrink-0 text-ink-faint">{aisleOpen ? '▴' : '▾'}</span>
           </button>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <input
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
@@ -161,8 +161,8 @@ export function AddSheet({ open, onClose }: Props) {
         )}
 
         {/* Urgent toggle */}
-        <label className="flex items-center justify-between rounded-md bg-surface-2 px-4 py-3">
-          <span className="flex flex-col">
+        <label className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-4 py-3">
+          <span className="flex min-w-0 flex-col">
             <span className="text-item font-medium text-ink">Urgent</span>
             {urgent && <span className="text-meta text-ink-soft">Everyone gets pinged about this one.</span>}
           </span>
@@ -171,7 +171,7 @@ export function AddSheet({ open, onClose }: Props) {
             aria-checked={urgent}
             aria-label="Mark urgent"
             onClick={() => setUrgent((u) => !u)}
-            className={`relative h-7 w-12 rounded-pill transition-colors ${urgent ? 'bg-urgent' : 'bg-line'}`}
+            className={`relative h-7 w-12 shrink-0 rounded-pill transition-colors ${urgent ? 'bg-urgent' : 'bg-line'}`}
           >
             <span
               className={`absolute top-0.5 h-6 w-6 rounded-pill bg-white shadow-e1 transition-transform ${
@@ -181,14 +181,14 @@ export function AddSheet({ open, onClose }: Props) {
           </button>
         </label>
 
-        <div className="flex items-center justify-between">
-          <span className="text-meta text-ink-soft" aria-live="polite">
+        <div className="flex items-center justify-between gap-3">
+          <span className="min-w-0 truncate text-meta text-ink-soft" aria-live="polite">
             {multiAddCount > 0 ? `${multiAddCount} added` : 'Add as many as you like.'}
           </span>
           <button
             onClick={commit}
             disabled={!name.trim()}
-            className="min-h-11 rounded-pill bg-brand px-6 font-semibold text-on-brand disabled:opacity-40"
+            className="shrink-0 min-h-11 rounded-pill bg-brand px-6 font-semibold text-on-brand disabled:opacity-40"
           >
             Add
           </button>
