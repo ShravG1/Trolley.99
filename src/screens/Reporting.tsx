@@ -96,9 +96,9 @@ export default function Reporting() {
           <ul className="space-y-4">
             {tally.map(([name, n]) => (
               <li key={name}>
-                <div className="mb-1 flex items-baseline justify-between">
-                  <span className="font-body text-item text-ink">{name}</span>
-                  <span className="text-stat font-semibold tabular-nums text-ink">{n}</span>
+                <div className="mb-1 flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate font-body text-item text-ink">{name}</span>
+                  <span className="shrink-0 text-stat font-semibold tabular-nums text-ink">{n}</span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-pill bg-surface-2" aria-hidden="true">
                   <div className="h-full rounded-pill bg-brand" style={{ width: `${(n / max) * 100}%` }} />

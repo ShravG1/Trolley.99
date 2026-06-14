@@ -30,7 +30,7 @@ export function UpdatePrompt() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-[70] mx-auto max-w-md p-4 pb-[max(16px,env(safe-area-inset-bottom))]">
       <div className="flex items-center justify-between gap-3 rounded-lg bg-ink px-4 py-3 shadow-e3">
-        <span className="text-body text-[var(--bg)]">A new version of Trolley is ready.</span>
+        <span className="min-w-0 text-body text-[var(--bg)]">A new version of Trolley is ready.</span>
         <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={() => setNeedRefresh(false)}
