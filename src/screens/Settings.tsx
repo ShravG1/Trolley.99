@@ -517,11 +517,11 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
       aria-checked={on}
       aria-label={label}
       onClick={() => onChange(!on)}
-      className={`relative h-7 w-12 shrink-0 rounded-pill transition-colors ${on ? 'bg-brand' : 'bg-line'}`}
+      className={`flex h-7 w-12 shrink-0 items-center rounded-pill px-0.5 transition-colors ${on ? 'bg-brand' : 'bg-line'}`}
     >
       <span
-        className={`absolute top-0.5 h-6 w-6 rounded-pill bg-white shadow-e1 transition-transform ${
-          on ? 'translate-x-5' : 'translate-x-0.5'
+        className={`h-6 w-6 rounded-pill bg-white shadow-e1 transition-transform ${
+          on ? 'translate-x-5' : 'translate-x-0'
         }`}
       />
     </button>
