@@ -30,8 +30,8 @@ export function Archive() {
         <ul className="overflow-hidden rounded-md bg-surface shadow-e1">
           {deleted.map((i) => (
             <li key={i.id} className="flex items-center justify-between border-b border-line px-4 py-3 last:border-0">
-              <span className="flex flex-col">
-                <span className="text-item text-ink line-through">{i.name}</span>
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate text-item text-ink line-through">{i.name}</span>
                 <span className="text-meta text-ink-soft">
                   {i.acted_by_name ? `${i.acted_by_name} binned this` : 'Binned'}
                   {i.acted_at ? ` · ${new Date(i.acted_at).toLocaleDateString('en-GB', { weekday: 'short' })}` : ''}
@@ -39,7 +39,7 @@ export function Archive() {
               </span>
               <button
                 onClick={() => restore(i.id)}
-                className="min-h-11 rounded-pill bg-brand-tint px-4 text-meta font-semibold text-brand-strong"
+                className="min-h-11 shrink-0 rounded-pill bg-brand-tint px-4 text-meta font-semibold text-brand-strong"
               >
                 Re-add
               </button>

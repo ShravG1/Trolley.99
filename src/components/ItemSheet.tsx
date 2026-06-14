@@ -151,13 +151,13 @@ export function ItemSheet({ item, onClose }: Props) {
               role="switch"
               aria-checked={item.priority === 'urgent'}
               onClick={() => toggleUrgent(item.id)}
-              className={`relative h-7 w-12 shrink-0 rounded-pill transition-colors ${
+              className={`flex h-7 w-12 shrink-0 items-center rounded-pill px-0.5 transition-colors ${
                 item.priority === 'urgent' ? 'bg-urgent' : 'bg-line'
               }`}
             >
               <span
-                className={`absolute top-0.5 h-6 w-6 rounded-pill bg-white shadow-e1 transition-transform ${
-                  item.priority === 'urgent' ? 'translate-x-5' : 'translate-x-0.5'
+                className={`h-6 w-6 rounded-pill bg-white shadow-e1 transition-transform ${
+                  item.priority === 'urgent' ? 'translate-x-5' : 'translate-x-0'
                 }`}
               />
             </button>

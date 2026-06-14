@@ -21,7 +21,7 @@ export function Toasts() {
           className="pointer-events-auto flex w-full max-w-md items-center justify-between gap-3 rounded-md bg-ink px-4 py-3 text-on-brand shadow-e2"
           style={{ animation: 'item-land 240ms var(--ease-out)' }}
         >
-          <span className="text-body text-[var(--bg)]">{t.message}</span>
+          <span className="min-w-0 text-body text-[var(--bg)]">{t.message}</span>
           {t.undo && (
             <button
               className="shrink-0 rounded-pill px-3 py-1 text-meta font-semibold text-[var(--brand)] underline-offset-2 hover:underline"

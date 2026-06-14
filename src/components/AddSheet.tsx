@@ -171,11 +171,11 @@ export function AddSheet({ open, onClose }: Props) {
             aria-checked={urgent}
             aria-label="Mark urgent"
             onClick={() => setUrgent((u) => !u)}
-            className={`relative h-7 w-12 shrink-0 rounded-pill transition-colors ${urgent ? 'bg-urgent' : 'bg-line'}`}
+            className={`flex h-7 w-12 shrink-0 items-center rounded-pill px-0.5 transition-colors ${urgent ? 'bg-urgent' : 'bg-line'}`}
           >
             <span
-              className={`absolute top-0.5 h-6 w-6 rounded-pill bg-white shadow-e1 transition-transform ${
-                urgent ? 'translate-x-5' : 'translate-x-0.5'
+              className={`h-6 w-6 rounded-pill bg-white shadow-e1 transition-transform ${
+                urgent ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>
