@@ -46,6 +46,8 @@ const SENSITIVE_PATH_RES = [
   /auth/i, // auth code/config
   /(^|\/)(vercel|next)\.config\.[mc]?[jt]s$/i, // deploy / build config
   /(^|\/)vercel\.(json|ts)$/i,
+  /(^|\/)wrangler\.(toml|jsonc?)$/i, // Cloudflare deploy config
+  /(^|\/)vite\.config\.[mc]?[jt]s$/i, // Vite build config
   /(^|\/)migrations?\//i, // db migrations
   /\.sql$/i, // schema
   /\.policy\.json$/i, // the policy manifest itself
