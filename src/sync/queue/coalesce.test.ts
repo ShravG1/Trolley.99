@@ -115,4 +115,22 @@ describe('planCoalesce (§2 coalescing)', () => {
     expect(plan.put).toHaveLength(1);
     expect(plan.put[0].opId).toBe('new'); // the edit is a brand-new op
   });
+
+  it('with a locked in-flight op AND a queued non-locked op, a patch merges into the non-locked op', () => {
+    // locked = in-flight insert; queued = a patch already waiting behind it.
+    // Incoming patch should fold into the queued non-locked op (keeps the queue
+    // at 2 ops: [locked-insert, merged-patch]) rather than spawning a third op.
+    const locked = insertOp({ opId: 'locked', createdAt: 1 });
+    const queued = patchOp({ quantity: 3 }, { opId: 'queued', createdAt: 2 });
+    const existing = [locked, queued];
+    const plan = planCoalesce(existing, patchOp({ quantity: 7, priority: 'urgent' }, { opId: 'incoming', createdAt: 3 }), 'locked');
+    // The locked op must not be in plan.delete, and the queued op is merged (not deleted).
+    expect(plan.delete).not.toContain('locked');
+    expect(plan.delete).not.toContain('queued');
+    // The merged result carries both patch fields last-write-wins.
+    expect(plan.put).toHaveLength(1);
+    expect(plan.put[0].opId).toBe('queued'); // same op id — merged in place
+    expect((plan.put[0].payload as Partial<Item>).quantity).toBe(7);
+    expect((plan.put[0].payload as Partial<Item>).priority).toBe('urgent');
+  });
 });

@@ -66,3 +66,48 @@ describe('stale-shopper detection (§2.6)', () => {
     expect(isShopStale(t({ status: 'active' }), 0, NOW)).toBe(false);
   });
 });
+
+describe('time-authority: all judgements use passed-in `now`, never Date.now() (§6.5)', () => {
+  // The window boundary is nowMs <= lastminute_until (inclusive <=).
+  // At exactly the boundary ms, the window is still open.
+  // One ms over the boundary, it is closed.
+  const BOUNDARY = Date.UTC(2026, 5, 2, 14, 0, 0);
+  const atBoundary = new Date(BOUNDARY).toISOString();
+
+  it('windowOpen: open AT exactly the boundary (nowMs === lastminute_until)', () => {
+    const trip = t({ status: 'shopping', lastminute_until: atBoundary });
+    expect(windowOpen(trip, BOUNDARY)).toBe(true);
+  });
+
+  it('windowOpen: closed just ONE ms past the boundary', () => {
+    const trip = t({ status: 'shopping', lastminute_until: atBoundary });
+    expect(windowOpen(trip, BOUNDARY + 1)).toBe(false);
+  });
+
+  it('canAddItem non-shopper: allowed AT exactly the boundary ms', () => {
+    const trip = t({ status: 'shopping', shopper_id: 'shopper', lastminute_until: atBoundary });
+    expect(canAddItem(trip, 'other', BOUNDARY)).toBe(true);
+  });
+
+  it('canAddItem non-shopper: blocked ONE ms past the boundary', () => {
+    const trip = t({ status: 'shopping', shopper_id: 'shopper', lastminute_until: atBoundary });
+    expect(canAddItem(trip, 'other', BOUNDARY + 1)).toBe(false);
+  });
+
+  // isShopStale boundary: stale when nowMs - lastActivityMs > STALE_MS (strict >)
+  // So AT exactly 90 min it is NOT stale; one ms over IS stale.
+  const STALE_MS = 90 * 60_000;
+
+  it('isShopStale: NOT stale when nowMs - lastActivity === exactly 90 min', () => {
+    const startedAt = new Date(BOUNDARY - STALE_MS).toISOString();
+    const trip = t({ status: 'shopping', started_at: startedAt });
+    // lastActivity === trip start (no item actions)
+    expect(isShopStale(trip, lastActivity(trip, []), BOUNDARY)).toBe(false);
+  });
+
+  it('isShopStale: stale when nowMs - lastActivity is 90 min + 1 ms', () => {
+    const startedAt = new Date(BOUNDARY - STALE_MS - 1).toISOString();
+    const trip = t({ status: 'shopping', started_at: startedAt });
+    expect(isShopStale(trip, lastActivity(trip, []), BOUNDARY)).toBe(true);
+  });
+});
