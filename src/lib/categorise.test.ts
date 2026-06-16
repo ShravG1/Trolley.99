@@ -22,3 +22,28 @@ describe('normaliseName', () => {
     expect(normaliseName('MILK')).toBe('milk');
   });
 });
+
+describe('guessAisle — unknown items fall to "other"', () => {
+  it('returns "other" for a completely unrecognised item', () => {
+    expect(guessAisle('Widget')).toBe('other');
+    expect(guessAisle('Zorbatron 9000')).toBe('other');
+  });
+
+  it('returns "other" for empty string', () => {
+    expect(guessAisle('')).toBe('other');
+  });
+
+  it('uses the longest keyword match so "loo roll" beats "roll" (bakery→household)', () => {
+    // "roll" is in bakery; "loo roll" is in household — longest wins
+    expect(guessAisle('loo roll')).toBe('household');
+  });
+
+  it('correctly identifies each major aisle by a representative item', () => {
+    expect(guessAisle('orange juice')).toBe('drinks');
+    expect(guessAisle('frozen peas')).toBe('frozen');
+    expect(guessAisle('tin of beans')).toBe('cupboard');
+    expect(guessAisle('chocolate bar')).toBe('snacks');
+    expect(guessAisle('nappy bag')).toBe('baby');
+    expect(guessAisle('vitamin C')).toBe('health');
+  });
+});

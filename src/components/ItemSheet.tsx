@@ -150,6 +150,7 @@ export function ItemSheet({ item, onClose }: Props) {
             <button
               role="switch"
               aria-checked={item.priority === 'urgent'}
+              aria-label="Mark urgent"
               onClick={() => toggleUrgent(item.id)}
               className={`flex h-7 w-12 shrink-0 items-center rounded-pill px-0.5 transition-colors ${
                 item.priority === 'urgent' ? 'bg-urgent' : 'bg-line'
