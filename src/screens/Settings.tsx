@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronRightIcon } from '@/components/icons';
 import { useStore } from '@/store/useStore';
 import { guessAisle } from '@/lib/categorise';
 import { enablePush, pushSupported, isInstalledPWA, isIOS } from '@/lib/push';
@@ -198,9 +199,9 @@ export function Settings() {
 
       {/* Trip history */}
       <Section title="History">
-        <Link to="/history" className="flex items-center justify-between py-2 text-item text-ink">
+        <Link to="/history" className="-mx-2 flex min-h-12 items-center justify-between gap-2 rounded-xs px-2 text-item text-ink active:bg-surface-2">
           <span>Past shops</span>
-          <span className="text-ink-faint">→</span>
+          <ChevronRightIcon size={18} className="shrink-0 text-ink-faint" />
         </Link>
       </Section>
 
@@ -211,20 +212,23 @@ export function Settings() {
 
       {/* Archive + privacy */}
       <Section title="This trip">
-        <Link to="/archive" className="flex items-center justify-between py-2 text-item text-ink">
+        <Link to="/archive" className="-mx-2 flex min-h-12 items-center justify-between gap-2 rounded-xs px-2 text-item text-ink active:bg-surface-2">
           <span>Binned items</span>
-          <span className="tnum text-meta text-ink-faint">{deleted.length}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="tnum text-meta text-ink-faint">{deleted.length}</span>
+            <ChevronRightIcon size={18} className="shrink-0 text-ink-faint" />
+          </span>
         </Link>
         <button
           onClick={() => window.dispatchEvent(new Event('trolley:guide'))}
-          className="flex w-full items-center justify-between py-2 text-left text-item text-ink"
+          className="-mx-2 flex min-h-12 items-center justify-between gap-2 rounded-xs px-2 text-left text-item text-ink active:bg-surface-2"
         >
           <span>How Trolley works</span>
-          <span className="text-ink-faint">→</span>
+          <ChevronRightIcon size={18} className="shrink-0 text-ink-faint" />
         </button>
-        <Link to="/privacy" className="flex items-center justify-between py-2 text-item text-ink">
+        <Link to="/privacy" className="-mx-2 flex min-h-12 items-center justify-between gap-2 rounded-xs px-2 text-item text-ink active:bg-surface-2">
           <span>Privacy & your data</span>
-          <span className="text-ink-faint">→</span>
+          <ChevronRightIcon size={18} className="shrink-0 text-ink-faint" />
         </Link>
       </Section>
     </div>

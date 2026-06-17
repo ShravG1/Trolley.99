@@ -18,7 +18,7 @@ export function SegmentedControl<T extends string>({ options, value, onChange, a
             aria-checked={active}
             onClick={() => onChange(o.value)}
             className={`min-h-11 rounded-pill px-4 text-meta font-semibold transition-colors ${
-              active ? 'bg-surface text-ink shadow-e1' : 'text-ink-soft hover:text-ink'
+              active ? 'bg-surface text-ink shadow-e1' : 'text-ink-soft hover:text-ink active:bg-surface'
             }`}
           >
             {o.label}

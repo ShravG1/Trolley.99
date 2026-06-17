@@ -4,7 +4,7 @@ import { useStore } from '@/store/useStore';
 import { getGroupSummaries, type GroupSummary } from '@/lib/supabase';
 import { markEnteredList } from '@/lib/landing';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { KebabIcon, PlusIcon } from '@/components/icons';
+import { GearIcon, PlusIcon } from '@/components/icons';
 import type { MyGroup } from '@/types/models';
 
 // "Your lists" overview (§12) — every group you're in, at a glance. The landing
@@ -53,7 +53,7 @@ export function Lists() {
             aria-label="Settings"
             className="grid h-11 w-11 place-items-center rounded-pill text-ink-soft hover:bg-surface-2"
           >
-            <KebabIcon />
+            <GearIcon />
           </Link>
         </div>
       </header>
