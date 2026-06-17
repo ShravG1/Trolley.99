@@ -103,13 +103,18 @@ function ConfirmSheet({
   onConfirm: () => void;
 }) {
   const copy = {
-    clear: { title: 'Clear trip history?', body: 'Deletes all completed trips for this group. The current list stays.' },
-    leave: { title: 'Leave this group?', body: 'You’ll lose access to the shared list. If you’re the last one out, the group is deleted.' },
+    clear: { title: 'Clear trip history?', body: 'Deletes all completed trips for this group. The current list stays.', cta: 'Clear history' },
+    leave: { title: 'Leave this group?', body: 'You’ll lose access to the shared list. If you’re the last one out, the group is deleted.', cta: 'Leave group' },
     deleteList: {
       title: 'Delete this list for everyone?',
       body: 'Permanently deletes this list — every item and all its history — for everyone in the group. This can’t be undone. (Only the list’s creator can do this.)',
+      cta: 'Delete list',
     },
-    delete: { title: 'Delete your account?', body: 'Removes your login for good. Your past actions stay as a name only.' },
+    delete: {
+      title: 'Delete your account?',
+      body: 'Removes your login for good. Your past actions stay as a snapshot name (“Mum binned this”) so the group’s history still makes sense, but your login is gone.',
+      cta: 'Delete account',
+    },
   }[action];
 
   return (
@@ -131,7 +136,7 @@ function ConfirmSheet({
             action === 'delete' || action === 'deleteList' ? 'bg-bin' : 'bg-urgent'
           }`}
         >
-          {busy ? '…' : 'Yes, do it'}
+          {busy ? '…' : copy.cta}
         </button>
       </div>
     </BottomSheet>
@@ -147,14 +152,18 @@ function LifecycleButton({
   tone: 'neutral' | 'danger';
   onClick: () => void;
 }) {
+  const danger = tone === 'danger';
   return (
     <button
       onClick={onClick}
-      className={`min-h-13 w-full rounded-md border px-4 text-left text-item font-semibold ${
-        tone === 'danger' ? 'border-bin/40 text-bin' : 'border-line text-ink'
+      className={`flex min-h-13 w-full items-center justify-between gap-2 rounded-md border px-4 text-left text-item font-semibold shadow-e1 ${
+        danger ? 'border-bin bg-bin/5 text-bin' : 'border-line bg-surface text-ink'
       }`}
     >
-      {label}
+      <span>{label}</span>
+      <span aria-hidden="true" className={danger ? 'text-bin' : 'text-ink-faint'}>
+        ›
+      </span>
     </button>
   );
 }

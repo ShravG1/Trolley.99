@@ -24,7 +24,7 @@ export function Toasts() {
           <span className="min-w-0 text-body text-[var(--bg)]">{t.message}</span>
           {t.undo && (
             <button
-              className="shrink-0 rounded-pill px-3 py-1 text-meta font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+              className="grid min-h-11 shrink-0 place-items-center rounded-pill px-3 text-meta font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
               onClick={() => {
                 t.undo?.();
                 dismiss(t.id);

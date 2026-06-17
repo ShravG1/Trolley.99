@@ -85,7 +85,7 @@ export function AddSheet({ open, onClose }: Props) {
               type="button"
               aria-label="Clear"
               onClick={() => setName('')}
-              className="absolute right-1 top-1/2 grid h-11 w-10 -translate-y-1/2 place-items-center rounded-pill text-ink-faint hover:bg-surface hover:text-ink"
+              className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-pill text-ink-faint hover:bg-surface hover:text-ink"
             >
               ✕
             </button>

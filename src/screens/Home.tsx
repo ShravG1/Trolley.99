@@ -40,6 +40,7 @@ export function Home() {
   // store — otherwise Home re-renders on every unrelated mutation (toasts,
   // viewers, multi-add count, …), not just the slices it reads.
   const markBought = useStore((s) => s.markBought);
+  const restoreItem = useStore((s) => s.restoreItem);
   const deleteItem = useStore((s) => s.deleteItem);
   const cancelShopping = useStore((s) => s.cancelShopping);
   const finishTrip = useStore((s) => s.finishTrip);
@@ -114,6 +115,7 @@ export function Home() {
 
   const rowProps = {
     onBought: markBought,
+    onUndo: restoreItem,
     onEdit: setEditItem,
     onMenu: setEditItem,
     onDelete: deleteItem,
@@ -135,11 +137,11 @@ export function Home() {
           {groups.length > 0 && activeGroup && (
             <Link
               to="/lists"
-              aria-label="Your lists"
-              className="-ml-2 -mt-1 mb-0.5 flex min-h-11 max-w-full items-center gap-1 rounded-pill px-2 text-meta font-semibold text-ink-soft hover:bg-surface-2 hover:text-ink"
+              aria-label={`Current list: ${activeGroup.name}. Tap to switch list`}
+              className="-ml-1 mb-1 flex min-h-11 max-w-full items-center gap-1.5 rounded-pill border border-line bg-surface-2 px-3 text-meta font-semibold text-ink shadow-e1 active:bg-surface"
             >
               <span className="truncate">{activeGroup.name}</span>
-              {groups.length >= 2 && <ChevronDownIcon size={16} className="shrink-0" />}
+              <ChevronDownIcon size={18} className="shrink-0 text-ink-soft" />
             </Link>
           )}
           <h1 className="font-display text-display-l text-ink">
@@ -195,13 +197,17 @@ export function Home() {
       <div ref={barRef} className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md space-y-3 bg-gradient-to-t from-bg via-bg to-transparent px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-6">
         {mode === 'list' && (
           <>
-            <PrimaryPill
-              onClick={() => setStartOpen(true)}
-              disabled={lifecycleBlocked}
-              disabledHint="Offline — connect to start a shop"
-            >
-              I’m going shopping
-            </PrimaryPill>
+            {/* Starting a shop with nothing on the list is a no-op — only offer it
+                once there's something to buy. */}
+            {total > 0 && (
+              <PrimaryPill
+                onClick={() => setStartOpen(true)}
+                disabled={lifecycleBlocked}
+                disabledHint="Offline — connect to start a shop"
+              >
+                I’m going shopping
+              </PrimaryPill>
+            )}
             <AddBar onClick={() => setAddOpen(true)} />
           </>
         )}
@@ -303,6 +309,7 @@ function membersName(userId: string, members: { user_id: string; display_name: s
 interface BodyProps {
   readOnly?: boolean;
   onBought: (id: string) => void;
+  onUndo: (id: string) => void;
   onEdit: (item: Item) => void;
   onMenu: (item: Item) => void;
   onDelete: (id: string) => void;
@@ -316,7 +323,9 @@ function ListBody(props: BodyProps) {
     <div className="px-0">
       {urgent.length > 0 && (
         <section className="anim-urgent-flash">
-          <div className="px-4 pb-1 pt-4 text-aisle font-semibold text-urgent">Urgent</div>
+          <div className="px-4 pb-1 pt-4 text-aisle font-semibold text-urgent">
+            Urgent <span className="text-ink-faint">{urgent.length}</span>
+          </div>
           {urgent.map((item) => (
             <ItemRow key={item.id} item={item} density="list" {...props} />
           ))}

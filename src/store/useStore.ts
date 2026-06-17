@@ -501,3 +501,9 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ multiAddCount: 0 });
   },
 }));
+
+// Dev-only: expose the store to QA/screenshot harnesses for state setup.
+// `import.meta.env.DEV` is false in production builds, so this is stripped out.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __store?: typeof useStore }).__store = useStore;
+}
