@@ -16,6 +16,7 @@ interface Props {
   density: 'list' | 'shopping';
   readOnly?: boolean;
   onBought: (id: string) => void;
+  onUndo: (id: string) => void;
   onEdit: (item: Item) => void;
   onMenu: (item: Item) => void;
   onDelete: (id: string) => void;
@@ -31,7 +32,7 @@ const REVEAL_TRIGGER = 44; // swipe left past this → open (step 1) / confirm d
 // stays in view; tapping it — or swiping left again — confirms. A stray full
 // swipe can no longer bin an item outright. Tap the row to dismiss the reveal.
 // Memoised: with stable row callbacks, only rows whose item changed re-render.
-export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought, onEdit, onMenu, onDelete }: Props) {
+export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought, onUndo, onEdit, onMenu, onDelete }: Props) {
   const [dx, setDx] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const startX = useRef<number | null>(null);
@@ -128,7 +129,7 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
     iconColor = 'var(--brand)';
   } else if (notFound) {
     Icon = NotFoundIcon;
-    iconColor = 'var(--ink-faint)';
+    iconColor = 'var(--ink-soft)';
   }
 
   const rowBg = urgent
@@ -143,29 +144,32 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
   return (
     <div className="relative overflow-hidden" style={{ viewTransitionName: `item-${item.id}` }}>
       {/* Reveals behind the row: right = Bought (swipe →); left = a real Delete
-          button (swipe ←) that stays put until tapped or swiped again. */}
-      <div className="absolute inset-0 flex items-stretch justify-between">
-        <span className="flex items-center gap-2 px-5 font-semibold" style={{ color: 'var(--brand)' }} aria-hidden="true">
-          <BoughtIcon /> Bought
-        </span>
-        <button
-          type="button"
-          onClick={() => onDelete(item.id)}
-          tabIndex={revealed ? 0 : -1}
-          aria-hidden={!revealed}
-          aria-label={`Delete ${item.name}`}
-          className="flex shrink-0 items-center justify-center gap-2 font-semibold text-on-brand"
-          style={{ width: REVEAL_W, backgroundColor: 'var(--bin)' }}
-        >
-          <BinIcon /> Delete
-        </button>
-      </div>
+          button (swipe ←) that stays put until tapped or swiped again. Rendered
+          ONLY while swiping or revealed — otherwise the (intentionally opaque)
+          row sits flush over it, and on resolved rows it used to bleed through. */}
+      {(dx !== 0 || revealed) && (
+        <div className="absolute inset-0 flex items-stretch justify-between">
+          <span className="flex items-center gap-2 px-5 font-semibold" style={{ color: 'var(--brand)' }} aria-hidden="true">
+            <BoughtIcon /> Bought
+          </span>
+          <button
+            type="button"
+            onClick={() => onDelete(item.id)}
+            tabIndex={revealed ? 0 : -1}
+            aria-hidden={!revealed}
+            aria-label={`Delete ${item.name}`}
+            className="flex shrink-0 items-center justify-center gap-2 font-semibold text-on-brand"
+            style={{ width: REVEAL_W, backgroundColor: 'var(--bin)' }}
+          >
+            <BinIcon /> Delete
+          </button>
+        </div>
+      )}
 
       <div
         ref={rowRef}
         className={`relative flex items-center gap-3 border-b border-line px-4 ${collapsed}
-          motion-safe:transition-[min-height,transform,opacity] motion-safe:duration-considered motion-safe:ease-out
-          ${done ? 'opacity-50' : notFound ? 'opacity-70' : ''}`}
+          motion-safe:transition-[min-height,transform] motion-safe:duration-considered motion-safe:ease-out`}
         style={{
           backgroundColor: rowBg,
           transform: `translateX(${liveX}px)`,
@@ -188,11 +192,15 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
         <button
           onClick={() => {
             if (tapHandled()) return;
-            if (!readOnly && !done) onBought(item.id);
+            if (readOnly) return;
+            // Checkbox is a toggle: tick a pending item, un-tick a done one back
+            // to pending (so a mis-tick is never a dead end).
+            if (done) onUndo(item.id);
+            else onBought(item.id);
           }}
-          disabled={readOnly || done}
-          aria-label={done ? `${item.name}, ${item.status}` : `Mark ${item.name} as bought`}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-pill"
+          disabled={readOnly}
+          aria-label={done ? `Un-tick ${item.name}` : `Mark ${item.name} as bought`}
+          className={`grid h-11 w-11 shrink-0 place-items-center rounded-pill ${readOnly ? 'opacity-60' : ''}`}
           style={{ color: iconColor }}
         >
           <Icon className={done ? 'anim-tick-pop' : undefined} />
@@ -212,7 +220,6 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
             }`}
           >
             {item.name}
-            {notFound && <span className="ml-1 text-meta text-ink-faint">(attempt {item.attempt_count})</span>}
           </span>
           <span className="truncate text-meta text-ink-soft">{subLabel(item)}</span>
         </button>
@@ -224,14 +231,16 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
           </span>
         )}
 
-        {/* Overflow — deletes outright on a done row, else opens the actions sheet */}
+        {/* Overflow — always opens the actions sheet; it never deletes outright
+            (the two-step swipe is the only fast-delete path, so a stray tap on a
+            done row's kebab can't bin a bought item). */}
         {!readOnly && (
           <button
             onClick={() => {
               if (tapHandled()) return;
-              done ? onDelete(item.id) : onMenu(item);
+              onMenu(item);
             }}
-            aria-label={done ? `Delete ${item.name}` : `More options for ${item.name}`}
+            aria-label={`More options for ${item.name}`}
             className="grid h-11 w-11 shrink-0 place-items-center text-ink-faint hover:text-ink"
           >
             <KebabIcon />
@@ -250,7 +259,9 @@ function subLabel(item: Item): string {
     case 'substituted':
       return `Substituted · ${item.substitution_note ?? ''}`;
     case 'not_found':
-      return 'Not found — rolled over';
+      return item.attempt_count > 1
+        ? `Not found · attempt ${item.attempt_count} — rolled over`
+        : 'Not found — rolled over';
     default:
       // A note is a shopper instruction ("get the own-brand one") — more useful
       // at the shelf than the aisle/added-by, so it takes the subtitle line.

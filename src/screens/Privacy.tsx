@@ -65,12 +65,17 @@ export function Privacy() {
           Reporting is off by default. If you turn it on, it counts who bought what — handy, but it
           profiles everyone in the household, so it stays opt-in and you can clear it whenever.
         </p>
-        <p>UK GDPR: you can leave a group, delete your account, or wipe your history at any time below.</p>
+        <p>You’re always in control — leave a group, delete your account, or wipe your history whenever you like.</p>
       </div>
 
       <div className="mt-6 space-y-2">
         <LifecycleButton label="Clear trip history" tone="neutral" onClick={() => setConfirm('clear')} />
-        <LifecycleButton label="Leave this group" tone="neutral" onClick={() => setConfirm('leave')} />
+        <LifecycleButton
+          label="Leave this group"
+          hint="If you’re the last one out, this deletes the group for everyone."
+          tone="neutral"
+          onClick={() => setConfirm('leave')}
+        />
         <LifecycleButton label="Delete this list" tone="danger" onClick={() => setConfirm('deleteList')} />
         <LifecycleButton label="Delete my account" tone="danger" onClick={() => setConfirm('delete')} />
       </div>
@@ -103,13 +108,18 @@ function ConfirmSheet({
   onConfirm: () => void;
 }) {
   const copy = {
-    clear: { title: 'Clear trip history?', body: 'Deletes all completed trips for this group. The current list stays.' },
-    leave: { title: 'Leave this group?', body: 'You’ll lose access to the shared list. If you’re the last one out, the group is deleted.' },
+    clear: { title: 'Clear trip history?', body: 'Deletes all completed trips for this group. The current list stays.', cta: 'Clear history' },
+    leave: { title: 'Leave this group?', body: 'You’ll lose access to the shared list. If you’re the last one out, the group is deleted.', cta: 'Leave group' },
     deleteList: {
       title: 'Delete this list for everyone?',
       body: 'Permanently deletes this list — every item and all its history — for everyone in the group. This can’t be undone. (Only the list’s creator can do this.)',
+      cta: 'Delete list',
     },
-    delete: { title: 'Delete your account?', body: 'Removes your login for good. Your past actions stay as a name only.' },
+    delete: {
+      title: 'Delete your account?',
+      body: 'Removes your login for good. Your past actions stay as a snapshot name (“Mum binned this”) so the group’s history still makes sense, but your login is gone.',
+      cta: 'Delete account',
+    },
   }[action];
 
   return (
@@ -131,7 +141,7 @@ function ConfirmSheet({
             action === 'delete' || action === 'deleteList' ? 'bg-bin' : 'bg-urgent'
           }`}
         >
-          {busy ? '…' : 'Yes, do it'}
+          {busy ? '…' : copy.cta}
         </button>
       </div>
     </BottomSheet>
@@ -140,21 +150,33 @@ function ConfirmSheet({
 
 function LifecycleButton({
   label,
+  hint,
   tone,
   onClick,
 }: {
   label: string;
+  hint?: string;
   tone: 'neutral' | 'danger';
   onClick: () => void;
 }) {
+  const danger = tone === 'danger';
   return (
     <button
       onClick={onClick}
-      className={`min-h-13 w-full rounded-md border px-4 text-left text-item font-semibold ${
-        tone === 'danger' ? 'border-bin/40 text-bin' : 'border-line text-ink'
+      style={danger ? { backgroundColor: 'color-mix(in srgb, var(--bin) 8%, var(--surface))' } : undefined}
+      className={`flex min-h-13 w-full items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-left font-semibold shadow-e1 ${
+        danger ? 'border-bin text-bin' : 'border-line bg-surface text-ink'
       }`}
     >
-      {label}
+      <span className="flex min-w-0 flex-col">
+        <span className="text-item">{label}</span>
+        {hint && (
+          <span className={`text-meta font-normal ${danger ? 'text-bin' : 'text-ink-soft'}`}>{hint}</span>
+        )}
+      </span>
+      <span aria-hidden="true" className={`shrink-0 ${danger ? 'text-bin' : 'text-ink-faint'}`}>
+        ›
+      </span>
     </button>
   );
 }
