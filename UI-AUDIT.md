@@ -25,20 +25,22 @@ Captured a full **state screenshot set** in a real mobile browser (Playwright, 3
 - **"I'm going shopping" is hidden on an empty list** (it was a no-op).
 - Tap targets bumped to ≥44px: Toasts "Undo", AddSheet clear-input button.
 
-## Flagged — not changed (your call)
+## Follow-up pass — all flagged items now done
 
 **Major**
-- Settings entry point is an **unlabeled kebab** (top-right) — consider a labelled/gear affordance or a bottom nav strip.
-- The **bin/archive count badge** is tiny and unlabeled though it's a link.
-- AddSheet **"unit" input has no visible label** (placeholder only).
-- **SegmentedControl** inactive options rely on `hover:` (no feedback on touch).
+- Settings entry is now a **gear icon** (was an unlabeled kebab), on both the list and "Your lists" headers.
+- The **archive/bin count** is now a bordered chip — clearly tappable, better contrast.
+- AddSheet's **"Unit"** field now has a visible label.
+- **SegmentedControl** inactive options now have a press (`active:`) state, not hover-only.
 
 **Minor / Polish**
-- Settings list rows ("Past shops", "Binned items", "Privacy…") read as plain text — a heavier chevron / brand styling would signal they're tappable.
-- **"Leave this group" can actually delete it** (last member out) — surface that on the trigger, not just buried in the confirm body.
-- Spectators get **no last-minute-window countdown** (the shopper does).
-- Low-contrast ghost icons (History empty state) and placeholder contrasts to verify, especially in **dark mode**.
-- Minor copy/tone nits (e.g. the "UK GDPR:" prefix on the Privacy page).
+- Settings list rows ("Past shops", "Binned items", "How Trolley works", "Privacy") now have a chevron + press state, so they read as tappable rows.
+- **"Leave this group"** now carries an inline hint that it deletes the group if you're the last one out.
+- **Spectators now see the last-minute-window countdown** (not just the shopper).
+- The **History/empty-state icon** is now a visible soft-brand mark (was near-invisible). Verified light **and** dark.
+- Privacy copy de-jargoned ("UK GDPR:" → "You're always in control…"); confirm buttons name the action ("Delete list", not "Yes, do it").
+
+> Note: the colour tokens are plain `var(--x)`, so Tailwind's `/opacity` modifier produces invalid CSS (silently transparent) — tints use `color-mix` instead, the repo's existing pattern (`aisles.ts`). Verified across light and dark themes.
 
 ## Health
 `tsc` clean · **96/96 tests** · production build green · demo mode intact · **no dependencies added**. The only non-UI change is a **dev-only `window.__store`** hook (guarded by `import.meta.env.DEV` + a `typeof window` check; stripped from production) to support QA/screenshot harnesses.

@@ -23,7 +23,7 @@ import { BottomSheet } from '@/components/BottomSheet';
 import { PresenceLine } from '@/components/PresenceLine';
 import { EmptyState } from '@/components/EmptyState';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { PlusIcon, KebabIcon, BinIcon, ChevronDownIcon } from '@/components/icons';
+import { PlusIcon, GearIcon, BinIcon, ChevronDownIcon } from '@/components/icons';
 
 export function Home() {
   const items = useStore((s) => s.items);
@@ -126,8 +126,9 @@ export function Home() {
       {/* Spectator banner */}
       {mode === 'spectator' && shopperName && <ModeBanner shopperName={shopperName} />}
 
-      {/* Shopper countdown */}
-      {mode === 'shopping' && windowOpen && trip.lastminute_until && (
+      {/* Last-minute window countdown — the shopper sees how long the window stays
+          open; spectators see how long they can still chuck things on. */}
+      {(mode === 'shopping' || mode === 'spectator') && windowOpen && trip.lastminute_until && (
         <CountdownBar until={trip.lastminute_until} />
       )}
 
@@ -154,7 +155,7 @@ export function Home() {
             {binnedCount > 0 && (
               <Link
                 to="/archive"
-                className="-my-1 flex min-h-11 items-center gap-1 rounded-pill px-2 text-meta text-ink-faint hover:bg-surface-2 hover:text-ink"
+                className="-my-1 flex min-h-11 items-center gap-1 rounded-pill border border-line px-2.5 text-meta text-ink-soft active:bg-surface-2"
                 aria-label={`${binnedCount} binned this trip`}
               >
                 <BinIcon size={14} /> {binnedCount}
@@ -169,7 +170,7 @@ export function Home() {
             aria-label="Settings"
             className="grid h-11 w-11 place-items-center rounded-pill text-ink-soft hover:bg-surface-2"
           >
-            <KebabIcon />
+            <GearIcon />
           </Link>
         </div>
       </header>

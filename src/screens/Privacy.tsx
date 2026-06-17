@@ -65,12 +65,17 @@ export function Privacy() {
           Reporting is off by default. If you turn it on, it counts who bought what — handy, but it
           profiles everyone in the household, so it stays opt-in and you can clear it whenever.
         </p>
-        <p>UK GDPR: you can leave a group, delete your account, or wipe your history at any time below.</p>
+        <p>You’re always in control — leave a group, delete your account, or wipe your history whenever you like.</p>
       </div>
 
       <div className="mt-6 space-y-2">
         <LifecycleButton label="Clear trip history" tone="neutral" onClick={() => setConfirm('clear')} />
-        <LifecycleButton label="Leave this group" tone="neutral" onClick={() => setConfirm('leave')} />
+        <LifecycleButton
+          label="Leave this group"
+          hint="If you’re the last one out, this deletes the group for everyone."
+          tone="neutral"
+          onClick={() => setConfirm('leave')}
+        />
         <LifecycleButton label="Delete this list" tone="danger" onClick={() => setConfirm('deleteList')} />
         <LifecycleButton label="Delete my account" tone="danger" onClick={() => setConfirm('delete')} />
       </div>
@@ -145,10 +150,12 @@ function ConfirmSheet({
 
 function LifecycleButton({
   label,
+  hint,
   tone,
   onClick,
 }: {
   label: string;
+  hint?: string;
   tone: 'neutral' | 'danger';
   onClick: () => void;
 }) {
@@ -156,12 +163,18 @@ function LifecycleButton({
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-13 w-full items-center justify-between gap-2 rounded-md border px-4 text-left text-item font-semibold shadow-e1 ${
-        danger ? 'border-bin bg-bin/5 text-bin' : 'border-line bg-surface text-ink'
+      style={danger ? { backgroundColor: 'color-mix(in srgb, var(--bin) 8%, var(--surface))' } : undefined}
+      className={`flex min-h-13 w-full items-center justify-between gap-3 rounded-md border px-4 py-2.5 text-left font-semibold shadow-e1 ${
+        danger ? 'border-bin text-bin' : 'border-line bg-surface text-ink'
       }`}
     >
-      <span>{label}</span>
-      <span aria-hidden="true" className={danger ? 'text-bin' : 'text-ink-faint'}>
+      <span className="flex min-w-0 flex-col">
+        <span className="text-item">{label}</span>
+        {hint && (
+          <span className={`text-meta font-normal ${danger ? 'text-bin' : 'text-ink-soft'}`}>{hint}</span>
+        )}
+      </span>
+      <span aria-hidden="true" className={`shrink-0 ${danger ? 'text-bin' : 'text-ink-faint'}`}>
         ›
       </span>
     </button>

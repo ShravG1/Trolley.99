@@ -117,16 +117,19 @@ export function AddSheet({ open, onClose }: Props) {
             <span className="shrink-0 text-ink-faint">{aisleOpen ? '▴' : '▾'}</span>
           </button>
 
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <input
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && commit()}
-              placeholder="unit"
-              aria-label="Unit (e.g. litres, pack)"
-              maxLength={24}
-              className="w-20 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink placeholder:text-ink-faint focus:border-brand"
-            />
+          <div className="ml-auto flex shrink-0 items-end gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="px-0.5 text-caption text-ink-faint">Unit</span>
+              <input
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && commit()}
+                placeholder="litres"
+                aria-label="Unit (e.g. litres, pack)"
+                maxLength={24}
+                className="w-20 rounded-xs border border-line bg-surface-2 px-3 py-2 text-meta text-ink placeholder:text-ink-faint focus:border-brand"
+              />
+            </label>
             <QtyStepper value={qty} onChange={setQty} size="sm" />
           </div>
         </div>
