@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(17);
+select plan(20);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -117,6 +117,38 @@ select lives_ok($$ select join_group('LIVE1234', 'Ben') $$, 'valid live code let
 select is(
   (select count(*) from groups where id = :'gid_a')::int, 1,
   'after joining, B can read A''s group');
+
+-- --- complete_trip rollover preserves note + unit (#11) ------------------
+-- A un-ticked item with a note + unit must carry both fields into the fresh
+-- active trip — they were silently dropped before 0012. Done as A (the shopper)
+-- so start_shopping / complete_trip run as a member of A's group.
+select act_as('11111111-1111-1111-1111-111111111111');
+select id as roll_trip from trips where group_id = :'gid_a' and status = 'active' limit 1 \gset
+insert into items (id, trip_id, name, quantity, category, priority, status,
+                   added_by, added_by_name, note, unit)
+  values (gen_random_uuid(), :'roll_trip', 'Olive oil', 1, 'other', 'normal', 'pending',
+          '11111111-1111-1111-1111-111111111111', 'Anna',
+          'get the own-brand one', '2 L');
+select start_shopping(:'roll_trip', 0);
+select complete_trip(:'roll_trip');
+
+select is(
+  (select count(*) from items i join trips t on t.id = i.trip_id
+    where t.group_id = :'gid_a' and t.status = 'active'
+      and i.name = 'Olive oil' and i.status = 'pending')::int, 1,
+  'un-ticked item rolls over into the new active trip');
+
+select is(
+  (select note from items i join trips t on t.id = i.trip_id
+    where t.group_id = :'gid_a' and t.status = 'active' and i.name = 'Olive oil'),
+  'get the own-brand one',
+  'rollover preserves the item note (#11)');
+
+select is(
+  (select unit from items i join trips t on t.id = i.trip_id
+    where t.group_id = :'gid_a' and t.status = 'active' and i.name = 'Olive oil'),
+  '2 L',
+  'rollover preserves the item unit (#11)');
 
 -- --- items_update WITH CHECK: audit stamp + action window (#13) ----------
 -- A and B are now BOTH members of group A (B joined above). Set up a pending
