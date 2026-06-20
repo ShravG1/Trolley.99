@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useStore } from '@/store/useStore';
+import { DEFAULT_SHOP_LABEL } from '@/lib/activeShop';
 import { ManageShopsSheet } from './ManageShopsSheet';
 import { PlusIcon } from './icons';
 
-// ShopTabs (#19) — one tab per shop (plus Unsorted). Tapping a tab is instant:
+// ShopTabs (#19) — one tab per shop (plus the default "General" tab). Tapping a tab is instant:
 // every shop's items are already loaded, so switching just re-points the view at
 // that shop's trip. Each tab shows how many items are still to get and whether
 // someone is shopping it right now. With no shops yet, it's a single quiet
@@ -41,7 +42,7 @@ export function ShopTabs() {
   const isShopping = (shopId: string | null) => tripFor(shopId)?.status === 'shopping';
 
   const tabs: { id: string | null; label: string }[] = [
-    { id: null, label: 'Unsorted' },
+    { id: null, label: DEFAULT_SHOP_LABEL },
     ...shops.map((s) => ({ id: s.id, label: s.name })),
   ];
 

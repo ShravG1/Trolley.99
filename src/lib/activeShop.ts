@@ -1,8 +1,14 @@
 // Active-shop (tab) selection for per-shop lists (#19). Which shop's tab is in
 // view is a per-device, per-group preference — like the active group (§12), it
-// lives in localStorage, not the server. NULL means the "Unsorted" tab.
+// lives in localStorage, not the server. NULL means the default shop-less tab.
 //
 // Keyed per group so switching groups remembers each one's last-open tab.
+
+// User-facing name for the shop-less (NULL shop_id) bucket — the first tab, the
+// default for new items, where routine items land, and where items return when a
+// shop is deleted. One constant so the tab, the add/move pickers and the
+// delete-shop copy never drift. (Items can be bought at "General" — any shop.)
+export const DEFAULT_SHOP_LABEL = 'General';
 
 const PREFIX = 'trolley.activeShop.';
 

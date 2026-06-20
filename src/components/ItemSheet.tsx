@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { QtyStepper } from './QtyStepper';
+import { ShopChips } from './ShopChips';
 import { AISLES, AISLE_ORDER, aisleColor, type AisleKey } from '@/lib/aisles';
 import { useStore } from '@/store/useStore';
 import type { Item } from '@/types/models';
@@ -91,6 +92,21 @@ export function ItemSheet({ item, onClose }: Props) {
             />
           </div>
 
+          {/* Shop (#19) — moving a live item between shops is a top-level action, so
+              it sits right under the name where it's visible without scrolling. */}
+          {shops.length > 0 && movable && (
+            <div>
+              <span className="mb-2 block text-item text-ink">Shop</span>
+              <ShopChips
+                value={currentShopId}
+                onSelect={(id) => {
+                  if (id !== currentShopId) moveItem(item.id, id);
+                  onClose();
+                }}
+              />
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             <span className="shrink-0 text-item text-ink">Quantity</span>
             <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -151,32 +167,6 @@ export function ItemSheet({ item, onClose }: Props) {
               })}
             </div>
           </div>
-
-          {/* Shop (#19) — move a still-live item to another shop's list. */}
-          {shops.length > 0 && movable && (
-            <div>
-              <span className="mb-2 block text-item text-ink">Shop</span>
-              <div className="flex flex-wrap gap-2">
-                {[{ id: null as string | null, name: 'Unsorted' }, ...shops].map((s) => {
-                  const active = (currentShopId ?? null) === s.id;
-                  return (
-                    <button
-                      key={s.id ?? 'unsorted'}
-                      onClick={() => {
-                        if (!active) moveItem(item.id, s.id);
-                        onClose();
-                      }}
-                      className={`min-h-11 rounded-pill border px-3 text-meta font-semibold ${
-                        active ? 'border-transparent bg-brand text-on-brand' : 'border-line text-ink'
-                      }`}
-                    >
-                      {s.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           <label className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-4 py-3">
             <span className="text-item text-ink">Urgent</span>
