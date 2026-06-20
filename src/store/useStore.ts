@@ -6,7 +6,7 @@ import { seedItems, seedMembers, seedTrip, CURRENT_USER } from './seed';
 import type { RemoteWriter } from './remote';
 import { shouldNudge } from '@/lib/push';
 import { loadActiveGroup, saveActiveGroup } from '@/lib/activeGroup';
-import { saveActiveShop } from '@/lib/activeShop';
+import { saveActiveShop, DEFAULT_SHOP_LABEL } from '@/lib/activeShop';
 
 // Pick which of the group's current trips a shop tab maps to (#19). Each shop has
 // at most one current (active|shopping) trip; NULL shop = the Unsorted trip.
@@ -336,12 +336,16 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   moveItem(itemId, shopId) {
-    const { items, allTrips } = get();
+    const { items, allTrips, shops } = get();
     const dest = pickTrip(allTrips, shopId);
     if (dest) {
       set({ items: items.map((i) => (i.id === itemId ? { ...i, trip_id: dest.id } : i)) });
     }
     get().remote?.moveItem(itemId, shopId);
+    // Confirm the move — the item leaves the current tab instantly, so name the
+    // tab it landed on (null = the default "General" list).
+    const name = shopId === null ? DEFAULT_SHOP_LABEL : shops.find((s) => s.id === shopId)?.name;
+    if (name) get().pushToast(`Moved to ${name}`);
   },
 
   applyServerItem(item) {

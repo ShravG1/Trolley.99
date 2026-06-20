@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { useStore } from '@/store/useStore';
+import { DEFAULT_SHOP_LABEL } from '@/lib/activeShop';
 import { withViewTransition } from '@/lib/viewTransition';
 
 interface Props {
@@ -23,9 +24,14 @@ export function StartShoppingSheet({ open, onClose }: Props) {
   const pushToast = useStore((s) => s.pushToast);
   const members = useStore((s) => s.members);
   const userId = useStore((s) => s.userId);
+  const shops = useStore((s) => s.shops);
+  const activeShopId = useStore((s) => s.activeShopId);
   const [selected, setSelected] = useState(10);
 
   const others = members.filter((m) => m.user_id !== userId).length;
+  // Name the shop you're about to shop, so with several shops it's never a
+  // surprise which one is starting (#19). Null shop = the default "General" list.
+  const shopName = shops.length > 0 ? (shops.find((s) => s.id === activeShopId)?.name ?? DEFAULT_SHOP_LABEL) : null;
 
   function go(minutes: number | null) {
     onClose();
@@ -45,6 +51,11 @@ export function StartShoppingSheet({ open, onClose }: Props) {
 
   return (
     <BottomSheet open={open} onClose={onClose} title="Going shopping?">
+      {shopName && (
+        <p className="mb-1 text-item font-semibold text-ink">
+          You’re shopping {shopName}.
+        </p>
+      )}
       <p className="mb-4 text-body text-ink-soft">
         Give the others a last-minute window to chuck things on the list before it locks.
       </p>
