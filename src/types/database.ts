@@ -317,12 +317,48 @@ export type Database = {
           },
         ]
       }
+      shops: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          group_id: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          group_id: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          group_id?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shops_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trips: {
         Row: {
           completed_at: string | null
           group_id: string
           id: string
           lastminute_until: string | null
+          shop_id: string | null
           shopper_id: string | null
           started_at: string | null
           status: Database["public"]["Enums"]["trip_status"]
@@ -332,6 +368,7 @@ export type Database = {
           group_id: string
           id?: string
           lastminute_until?: string | null
+          shop_id?: string | null
           shopper_id?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["trip_status"]
@@ -341,6 +378,7 @@ export type Database = {
           group_id?: string
           id?: string
           lastminute_until?: string | null
+          shop_id?: string | null
           shopper_id?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["trip_status"]
@@ -351,6 +389,13 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -376,7 +421,12 @@ export type Database = {
           token: string
         }[]
       }
+      create_shop: {
+        Args: { p_group_id: string; p_name: string }
+        Returns: string
+      }
       delete_account: { Args: never; Returns: undefined }
+      delete_shop: { Args: { p_shop_id: string }; Returns: undefined }
       is_member: { Args: { gid: string }; Returns: boolean }
       join_group: {
         Args: { p_code: string; p_display_name?: string }
@@ -387,8 +437,16 @@ export type Database = {
         Returns: string
       }
       leave_group: { Args: { p_group_id: string }; Returns: undefined }
+      move_item_to_shop: {
+        Args: { p_item_id: string; p_shop_id: string | null }
+        Returns: undefined
+      }
       rename_member: {
         Args: { p_display_name: string; p_group_id: string }
+        Returns: undefined
+      }
+      rename_shop: {
+        Args: { p_name: string; p_shop_id: string }
         Returns: undefined
       }
       start_shopping: {

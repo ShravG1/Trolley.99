@@ -24,6 +24,7 @@ export const seedTrip: Trip = {
   id: TRIP_ID,
   group_id: GROUP_ID,
   status: 'active',
+  shop_id: null, // Unsorted (#19) — demo starts with no shops
   shopper_id: null,
   shopper_name: null,
   lastminute_until: null,

@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { MyGroup, ItemStatus } from '@/types/models';
+import type { MyGroup, ItemStatus, Shop } from '@/types/models';
 import type { AisleKey } from '@/lib/aisles';
 import type { Database } from '@/types/database';
 
@@ -174,6 +174,57 @@ export async function joinGroupByToken(token: string, displayName: string): Prom
   return data as string;
 }
 
+// --- Shops / per-shop tabs (#19) -------------------------------------------
+
+/** The group's shops (tabs), in display order. Returns [] (not an error) when
+ * the shops backend isn't present yet — so the app degrades to the single
+ * Unsorted list if the frontend is deployed before the migration is applied. */
+export async function fetchShops(groupId: string): Promise<Shop[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('shops')
+    .select('*')
+    .eq('group_id', groupId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) return []; // table missing (pre-migration) / RLS — fall back to Unsorted only
+  return (data ?? []) as Shop[];
+}
+
+/** Create a shop + its first active trip in one RPC. Returns the new shop id. */
+export async function createShop(groupId: string, name: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('create_shop', {
+    p_group_id: groupId,
+    p_name: name,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function renameShop(shopId: string, name: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('rename_shop', { p_shop_id: shopId, p_name: name });
+  if (error) throw error;
+}
+
+/** Delete a shop; its un-bought items move back to Unsorted server-side. */
+export async function deleteShop(shopId: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('delete_shop', { p_shop_id: shopId });
+  if (error) throw error;
+}
+
+/** Move one still-live item to another shop's current trip (null = Unsorted). */
+export async function moveItemToShop(itemId: string, shopId: string | null): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('move_item_to_shop', {
+    p_item_id: itemId,
+    p_shop_id: shopId,
+  });
+  if (error) throw error;
+}
+
 /** Mint a fresh invite (code + link token) for a group (§5.2). */
 export async function createInvite(
   groupId: string
@@ -229,22 +280,29 @@ export async function getGroupSummaries(
   const empty: Record<string, GroupSummary> = {};
   if (!supabase || groupIds.length === 0) return empty;
 
-  // Current (active|shopping) trip per group — one row each in normal operation.
+  // Current (active|shopping) trips per group — several now, one per shop tab
+  // (#19). Aggregate across all of them: pending sums every shop, and a group is
+  // "shopping" if ANY of its shops is being shopped right now.
   const { data: trips } = await supabase
     .from('trips')
     .select('id, group_id, status')
     .in('group_id', groupIds)
     .in('status', ['active', 'shopping']);
 
-  const current: Record<string, { tripId: string; status: 'active' | 'shopping' }> = {};
+  const groupOf: Record<string, string> = {}; // trip id → group id
+  const anyShopping: Record<string, boolean> = {};
+  const hasCurrent: Record<string, boolean> = {};
   const tripIds: string[] = [];
   for (const t of trips ?? []) {
-    current[t.group_id as string] = { tripId: t.id as string, status: t.status as 'active' | 'shopping' };
+    const gid = t.group_id as string;
+    groupOf[t.id as string] = gid;
+    hasCurrent[gid] = true;
+    if (t.status === 'shopping') anyShopping[gid] = true;
     tripIds.push(t.id as string);
   }
 
-  // Pending counts for all those trips in a single query, tallied client-side.
-  const counts: Record<string, number> = {};
+  // Pending counts for all those trips in a single query, tallied per group.
+  const pending: Record<string, number> = {};
   if (tripIds.length) {
     const { data: items } = await supabase
       .from('items')
@@ -252,16 +310,16 @@ export async function getGroupSummaries(
       .in('trip_id', tripIds)
       .eq('status', 'pending');
     for (const i of items ?? []) {
-      const tid = i.trip_id as string;
-      counts[tid] = (counts[tid] ?? 0) + 1;
+      const gid = groupOf[i.trip_id as string];
+      if (gid) pending[gid] = (pending[gid] ?? 0) + 1;
     }
   }
 
   const out: Record<string, GroupSummary> = {};
   for (const gid of groupIds) {
-    const cur = current[gid];
-    out[gid] = cur
-      ? { status: cur.status, shopping: cur.status === 'shopping', pending: counts[cur.tripId] ?? 0 }
+    const shopping = anyShopping[gid] ?? false;
+    out[gid] = hasCurrent[gid]
+      ? { status: shopping ? 'shopping' : 'active', shopping, pending: pending[gid] ?? 0 }
       : { status: null, shopping: false, pending: 0 };
   }
   return out;

@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(20);
+select plan(27);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -41,6 +41,15 @@ insert into items (id, trip_id, name, added_by, added_by_name)
   select gen_random_uuid(), id, 'A milk', '11111111-1111-1111-1111-111111111111', 'Anna'
   from trips where group_id = :'gid_a';
 
+-- A names a shop in group A (per-shop tabs, #19). create_shop also opens the
+-- shop's first active trip — so group A now has TWO active trips (Unsorted + the
+-- shop's), which is why the rollover/probe lookups below pin `shop_id is null`.
+select create_shop(:'gid_a', 'Tesco') as shop_a \gset
+-- A's item id, for the cross-group move-isolation check below (captured while it
+-- still lives on the original Unsorted trip, before the #11 rollover renames it).
+select id as item_a from items i join trips t on t.id = i.trip_id
+  where t.group_id = :'gid_a' and i.name = 'A milk' limit 1 \gset
+
 -- --- Cross-group READ isolation ------------------------------------------
 select act_as('22222222-2222-2222-2222-222222222222');
 
@@ -63,6 +72,10 @@ select is(
 select is(
   (select count(*) from invites where group_id = :'gid_a')::int, 0,
   'B cannot read A''s invites');
+
+select is(
+  (select count(*) from shops where group_id = :'gid_a')::int, 0,
+  'B cannot read A''s shops (#19)');
 
 -- --- Cross-group WRITE isolation -----------------------------------------
 -- Grab A's real trip id (impersonating A so RLS lets us read it), then attack as B.
@@ -97,6 +110,18 @@ select throws_ok(
   '42501', NULL,
   'B cannot insert themselves into A''s group (join is RPC-only)');
 
+-- B cannot create a shop in A's group — create_shop checks is_member (#19).
+select throws_ok(
+  format($$ select create_shop(%L, 'Hack') $$, :'gid_a'),
+  NULL,
+  'B cannot create a shop in A''s group (#19)');
+
+-- B cannot move A's item, even with A's item id + shop id leaked (#19).
+select throws_ok(
+  format($$ select move_item_to_shop(%L, %L) $$, :'item_a', :'shop_a'),
+  NULL,
+  'B cannot move an item in A''s group (#19)');
+
 -- --- join_group: valid vs expired vs bogus codes -------------------------
 -- A mints two invites for group A: one live, one already expired.
 select act_as('11111111-1111-1111-1111-111111111111');
@@ -123,7 +148,8 @@ select is(
 -- active trip — they were silently dropped before 0012. Done as A (the shopper)
 -- so start_shopping / complete_trip run as a member of A's group.
 select act_as('11111111-1111-1111-1111-111111111111');
-select id as roll_trip from trips where group_id = :'gid_a' and status = 'active' limit 1 \gset
+select id as roll_trip from trips
+  where group_id = :'gid_a' and status = 'active' and shop_id is null limit 1 \gset
 insert into items (id, trip_id, name, quantity, category, priority, status,
                    added_by, added_by_name, note, unit)
   values (gen_random_uuid(), :'roll_trip', 'Olive oil', 1, 'other', 'normal', 'pending',
@@ -155,7 +181,8 @@ select is(
 -- item on A's trip, have A claim the shop, then probe the new policy from both
 -- sides. These are intra-group: same household, trusted-but-not-omnipotent.
 select act_as('11111111-1111-1111-1111-111111111111');
-select id as sh_trip from trips where group_id = :'gid_a' and status = 'active' limit 1 \gset
+select id as sh_trip from trips
+  where group_id = :'gid_a' and status = 'active' and shop_id is null limit 1 \gset
 -- A fresh pending item to probe against (independent of the cross-isolation fixtures).
 insert into items (id, trip_id, name, quantity, category, priority, status,
                    added_by, added_by_name)
@@ -198,6 +225,48 @@ select id as editable from items where trip_id = :'sh_trip' and name = 'Edit me'
 select lives_ok(
   format($$ update items set quantity = 3 where id = %L $$, :'editable'),
   'a plain qty edit on a pending item still works (#13 — no over-reject)');
+
+-- --- per-shop tabs: create / move / per-shop completion (#19) -------------
+-- Self-contained: works only against shop A's own trips, so it doesn't depend
+-- on the Unsorted trip's state left by the sections above.
+select act_as('11111111-1111-1111-1111-111111111111');
+
+-- create_shop opened exactly one active trip dedicated to the shop.
+select is(
+  (select count(*) from trips where shop_id = :'shop_a' and status = 'active')::int, 1,
+  'create_shop opens an active trip for the shop (#19)');
+
+-- Two items on the shop's active trip.
+select id as shop_trip from trips
+  where shop_id = :'shop_a' and status = 'active' limit 1 \gset
+insert into items (id, trip_id, name, quantity, category, priority, status,
+                   added_by, added_by_name)
+values
+  (gen_random_uuid(), :'shop_trip', 'Shampoo', 1, 'health', 'normal', 'pending',
+   '11111111-1111-1111-1111-111111111111', 'Anna'),
+  (gen_random_uuid(), :'shop_trip', 'Razors', 1, 'health', 'normal', 'pending',
+   '11111111-1111-1111-1111-111111111111', 'Anna');
+select id as move_item from items where trip_id = :'shop_trip' and name = 'Razors' limit 1 \gset
+
+-- Move Razors out to Unsorted; the RPC opens an Unsorted active trip if needed.
+select move_item_to_shop(:'move_item', null);
+select is(
+  (select shop_id from trips where id = (select trip_id from items where id = :'move_item')),
+  NULL,
+  'move_item_to_shop to Unsorted reparents the item onto a shop-less trip (#19)');
+
+-- Per-shop completion: shop & finish the shop's trip; Shampoo rolls over to the
+-- shop's NEXT active trip, leaving the shop's lifecycle on the same shop.
+select start_shopping(:'shop_trip', 0);
+select complete_trip(:'shop_trip');
+select is(
+  (select count(*) from trips where shop_id = :'shop_a' and status = 'active')::int, 1,
+  'complete_trip opens the next active trip on the SAME shop (#19)');
+select is(
+  (select count(*) from items i join trips t on t.id = i.trip_id
+    where t.shop_id = :'shop_a' and t.status = 'active'
+      and i.name = 'Shampoo' and i.status = 'pending')::int, 1,
+  'a shop trip rolls its un-bought items into the shop''s next trip (#19)');
 
 select * from finish();
 rollback;

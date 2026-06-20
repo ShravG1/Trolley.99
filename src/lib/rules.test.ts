@@ -6,6 +6,7 @@ const t = (over: Partial<Trip>): Trip => ({
   id: 'trip',
   group_id: 'g',
   status: 'active',
+  shop_id: null,
   shopper_id: null,
   shopper_name: null,
   lastminute_until: null,

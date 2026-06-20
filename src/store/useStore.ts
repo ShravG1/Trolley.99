@@ -1,11 +1,23 @@
 import { create } from 'zustand';
-import type { Item, ItemStatus, Trip, GroupMember, MyGroup } from '@/types/models';
+import type { Item, ItemStatus, Trip, GroupMember, MyGroup, Shop } from '@/types/models';
 import type { AisleKey } from '@/lib/aisles';
 import { guessAisle, normaliseName } from '@/lib/categorise';
 import { seedItems, seedMembers, seedTrip, CURRENT_USER } from './seed';
 import type { RemoteWriter } from './remote';
 import { shouldNudge } from '@/lib/push';
 import { loadActiveGroup, saveActiveGroup } from '@/lib/activeGroup';
+import { saveActiveShop } from '@/lib/activeShop';
+
+// Pick which of the group's current trips a shop tab maps to (#19). Each shop has
+// at most one current (active|shopping) trip; NULL shop = the Unsorted trip.
+// Falls back to Unsorted, then to any trip, so the view always has a valid trip.
+function pickTrip(trips: Trip[], shopId: string | null): Trip | undefined {
+  return (
+    trips.find((t) => (t.shop_id ?? null) === shopId) ??
+    trips.find((t) => (t.shop_id ?? null) === null) ??
+    trips[0]
+  );
+}
 
 // -----------------------------------------------------------------------------
 // Client state + optimistic layer (§6.3).
@@ -30,7 +42,19 @@ export interface Toast {
 interface StoreState {
   userId: string;
   members: GroupMember[];
+  /** The trip for the shop tab currently in view (#19). Every item mutation +
+   *  the trip lifecycle act on this trip, so the existing single-trip flows are
+   *  unchanged — they just target the selected shop. */
   trip: Trip;
+  /** All current (active|shopping) trips for the active group — one per shop tab
+   *  (incl. the Unsorted shop-less trip). Drives the tab strip + per-tab state. */
+  allTrips: Trip[];
+  /** The group's shops (tabs), in display order. Empty = no shops yet (the app
+   *  then looks exactly as before: one Unsorted list, no tab strip). */
+  shops: Shop[];
+  /** Which shop tab is in view; null = the Unsorted tab. */
+  activeShopId: string | null;
+  /** items across ALL current trips in the group; the view filters by trip.id. */
   items: Item[];
   toasts: Toast[];
   multiAddCount: number;
@@ -61,10 +85,28 @@ interface StoreState {
   /** Drop the active group's slice on switch so the previous group's items/trip/
    *  shopper-mode can't linger (or be acted on) before the new snapshot lands. */
   clearGroupScope: () => void;
-  /** Replace the whole local view from a server fetch (bootstrap / reload). */
-  loadSnapshot: (snap: { userId: string; members: GroupMember[]; trip: Trip; items: Item[] }) => void;
+  /** Replace the whole local view from a server fetch (bootstrap / reload). The
+   *  selected `trip` is resolved from `activeShopId` against the loaded trips. */
+  loadSnapshot: (snap: {
+    userId: string;
+    members: GroupMember[];
+    shops: Shop[];
+    trips: Trip[];
+    items: Item[];
+    activeShopId: string | null;
+  }) => void;
   /** Reconcile a single item arriving over Realtime, deduped by id (§6.3). */
   applyServerItem: (item: Item) => void;
+
+  // shop tabs (#19)
+  /** Switch the visible shop tab — instant (data for all tabs is already loaded);
+   *  null = Unsorted. Persisted per-group. */
+  setActiveShop: (shopId: string | null) => void;
+  createShop: (name: string) => void;
+  renameShop: (shopId: string, name: string) => void;
+  deleteShop: (shopId: string) => void;
+  /** Move a still-live item to another shop's list (null = Unsorted). */
+  moveItem: (itemId: string, shopId: string | null) => void;
 
   // derived
   mode: () => Mode;
@@ -78,6 +120,8 @@ interface StoreState {
     urgent: boolean;
     note?: string;
     unit?: string;
+    /** Shop tab to add to (#19); defaults to the tab in view. null = Unsorted. */
+    shopId?: string | null;
   }) => void;
   setQuantity: (id: string, quantity: number) => void;
   setCategory: (id: string, category: AisleKey) => void;
@@ -114,6 +158,9 @@ export const useStore = create<StoreState>((set, get) => ({
   userId: CURRENT_USER.user_id,
   members: seedMembers,
   trip: seedTrip,
+  allTrips: [seedTrip],
+  shops: [],
+  activeShopId: null,
   items: seedItems,
   toasts: [],
   multiAddCount: 0,
@@ -155,6 +202,8 @@ export const useStore = create<StoreState>((set, get) => ({
       items: [],
       members: [],
       viewers: [],
+      shops: [],
+      activeShopId: null,
       switching: true,
       // Neutral placeholder so mode() => 'list' (no stale shopper actions) for the
       // group we're switching to, until its real snapshot replaces this.
@@ -162,29 +211,137 @@ export const useStore = create<StoreState>((set, get) => ({
         id: '',
         group_id: s.activeGroupId ?? s.trip.group_id,
         status: 'active',
+        shop_id: null,
         shopper_id: null,
         shopper_name: null,
         lastminute_until: null,
         started_at: null,
         completed_at: null,
       },
+      allTrips: [],
     }));
   },
 
-  loadSnapshot({ userId, members, trip, items }) {
+  loadSnapshot({ userId, members, shops, trips, items, activeShopId }) {
     set((s) => {
-      // Keep optimistic items that are still queued for THIS trip but haven't
-      // reached the server yet, so a reload on reconnect doesn't blink them out
-      // before the queue replays them — the realtime echo reconciles them in
-      // (docs/OFFLINE_PLAN.md §5). With the queue off, pendingWriteIds is always
-      // empty, so this is a no-op and the snapshot replaces wholesale as before.
+      // Keep optimistic items still queued for any of the loaded trips but not yet
+      // on the server, so a reload on reconnect doesn't blink them out before the
+      // queue replays them — the realtime echo reconciles them in
+      // (docs/OFFLINE_PLAN.md §5). With the queue off, pendingWriteIds is empty, so
+      // this is a no-op and the snapshot replaces wholesale as before.
       const serverIds = new Set(items.map((i) => i.id));
+      const tripIds = new Set(trips.map((t) => t.id));
       const pending = new Set(s.pendingWriteIds);
       const keep = s.items.filter(
-        (i) => pending.has(i.id) && !serverIds.has(i.id) && i.trip_id === trip.id
+        (i) => pending.has(i.id) && !serverIds.has(i.id) && tripIds.has(i.trip_id)
       );
-      return { userId, members, trip, items: keep.length ? [...items, ...keep] : items, switching: false };
+      const selected = pickTrip(trips, activeShopId);
+      return {
+        userId,
+        members,
+        shops,
+        allTrips: trips,
+        // Reflect the resolved tab (a stale/deleted shop falls back to Unsorted).
+        activeShopId: selected ? (selected.shop_id ?? null) : activeShopId,
+        trip: selected ?? s.trip,
+        items: keep.length ? [...items, ...keep] : items,
+        switching: false,
+      };
     });
+  },
+
+  setActiveShop(shopId) {
+    const { activeGroupId, allTrips, trip } = get();
+    if (activeGroupId) saveActiveShop(activeGroupId, shopId);
+    set({ activeShopId: shopId, trip: pickTrip(allTrips, shopId) ?? trip });
+  },
+
+  createShop(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const remote = get().remote;
+    if (remote) {
+      remote.createShop(trimmed); // RPC creates the shop + its trip, then reloads + selects it
+      return;
+    }
+    // Demo (no backend): make a local shop + active trip and switch to it.
+    const { activeGroupId, trip, shops, allTrips, userId } = get();
+    const gid = activeGroupId ?? trip.group_id;
+    const shopId = uid();
+    const newShop: Shop = {
+      id: shopId,
+      group_id: gid,
+      name: trimmed,
+      sort_order: shops.length,
+      created_by: userId,
+      created_at: now(),
+    };
+    const newTrip: Trip = {
+      id: uid(),
+      group_id: gid,
+      status: 'active',
+      shop_id: shopId,
+      shopper_id: null,
+      shopper_name: null,
+      lastminute_until: null,
+      started_at: null,
+      completed_at: null,
+    };
+    set({ shops: [...shops, newShop], allTrips: [...allTrips, newTrip] });
+    get().setActiveShop(shopId);
+  },
+
+  renameShop(shopId, name) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    set((s) => ({ shops: s.shops.map((sh) => (sh.id === shopId ? { ...sh, name: trimmed } : sh)) }));
+    get().remote?.renameShop(shopId, trimmed);
+  },
+
+  deleteShop(shopId) {
+    const { activeShopId, shops, allTrips, items, trip } = get();
+    // Carry the shop's live items back to the Unsorted trip so nothing's lost
+    // (mirrors the server RPC); drop the shop + its trips.
+    const gid = get().activeGroupId ?? trip.group_id;
+    let unsorted = allTrips.find((t) => (t.shop_id ?? null) === null && t.status === 'active');
+    let nextTrips = allTrips;
+    if (!unsorted) {
+      unsorted = {
+        id: uid(),
+        group_id: gid,
+        status: 'active',
+        shop_id: null,
+        shopper_id: null,
+        shopper_name: null,
+        lastminute_until: null,
+        started_at: null,
+        completed_at: null,
+      };
+      nextTrips = [...allTrips, unsorted];
+    }
+    const unsortedId = unsorted.id;
+    const shopTripIds = new Set(nextTrips.filter((t) => t.shop_id === shopId).map((t) => t.id));
+    const nextItems = items.map((i) =>
+      shopTripIds.has(i.trip_id) && (i.status === 'pending' || i.status === 'not_found')
+        ? { ...i, trip_id: unsortedId }
+        : i
+    );
+    set({
+      shops: shops.filter((sh) => sh.id !== shopId),
+      allTrips: nextTrips.filter((t) => t.shop_id !== shopId),
+      items: nextItems,
+    });
+    if (activeShopId === shopId) get().setActiveShop(null);
+    get().remote?.deleteShop(shopId);
+  },
+
+  moveItem(itemId, shopId) {
+    const { items, allTrips } = get();
+    const dest = pickTrip(allTrips, shopId);
+    if (dest) {
+      set({ items: items.map((i) => (i.id === itemId ? { ...i, trip_id: dest.id } : i)) });
+    }
+    get().remote?.moveItem(itemId, shopId);
   },
 
   applyServerItem(item) {
@@ -207,19 +364,22 @@ export const useStore = create<StoreState>((set, get) => ({
     return get().trip.shopper_name;
   },
 
-  addItem({ name, quantity, category, urgent, note, unit }) {
+  addItem({ name, quantity, category, urgent, note, unit, shopId }) {
     const trimmed = name.trim();
     if (!trimmed) return; // server also rejects empty (§5.5)
 
-    const { items, trip, userId, members } = get();
+    const { items, trip, allTrips, userId, members } = get();
+    // Target the selected shop's trip by default; an explicit shopId adds to a
+    // different tab (#19). Resolve to a real current trip; never invent an id.
+    const targetTrip = shopId === undefined ? trip : pickTrip(allTrips, shopId) ?? trip;
     const me = members.find((m) => m.user_id === userId);
     const norm = normaliseName(trimmed);
 
-    // Dedupe within the active trip (§7.4): bump quantity instead of double-adding.
-    // Only a still-pending row counts — re-adding something already bought/not-found/
-    // substituted this trip should add a fresh pending item, not bump the resolved one.
+    // Dedupe within the TARGET shop's trip (§7.4): bump quantity instead of
+    // double-adding. Only a still-pending row counts — re-adding something already
+    // bought/not-found/substituted this trip adds a fresh pending item, not a bump.
     const existing = items.find(
-      (i) => i.status === 'pending' && normaliseName(i.name) === norm
+      (i) => i.trip_id === targetTrip.id && i.status === 'pending' && normaliseName(i.name) === norm
     );
     if (existing) {
       const nextQty = existing.quantity + quantity;
@@ -237,7 +397,7 @@ export const useStore = create<StoreState>((set, get) => ({
     // enforces window/shopper rule — §6.3, §7.2).
     const item: Item = {
       id: uid(),
-      trip_id: trip.id,
+      trip_id: targetTrip.id,
       name: trimmed,
       quantity: Math.max(1, quantity),
       category: category ?? guessAisle(trimmed),
@@ -399,16 +559,16 @@ export const useStore = create<StoreState>((set, get) => ({
       windowMinutes && windowMinutes > 0
         ? new Date(Date.now() + windowMinutes * 60_000).toISOString()
         : now(); // "off" locks immediately (§2.6)
-    set({
-      trip: {
-        ...trip,
-        status: 'shopping',
-        shopper_id: userId,
-        shopper_name: me?.display_name ?? 'You',
-        lastminute_until: until,
-        started_at: now(),
-      },
-    });
+    const updated: Trip = {
+      ...trip,
+      status: 'shopping',
+      shopper_id: userId,
+      shopper_name: me?.display_name ?? 'You',
+      lastminute_until: until,
+      started_at: now(),
+    };
+    // Keep allTrips in step so the tab's "being shopped" dot updates instantly.
+    set((s) => ({ trip: updated, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
     // Remote claim is authoritative; if it loses the race the writer resyncs the
     // trip back to active and toasts "someone's already shopping" (§7.1).
     get().remote?.startShopping(trip.id, windowMinutes);
@@ -421,45 +581,48 @@ export const useStore = create<StoreState>((set, get) => ({
     const { trip, userId, members } = get();
     if (trip.status !== 'shopping') return;
     const me = members.find((m) => m.user_id === userId);
-    set({
-      // Mirror the RPC, which closes the last-minute window on take-over
-      // (lastminute_until = now()) — otherwise the new shopper briefly sees the
-      // previous shopper's open window until reload() corrects it.
-      trip: { ...trip, shopper_id: userId, shopper_name: me?.display_name ?? 'You', lastminute_until: now(), started_at: now() },
-    });
+    // Mirror the RPC, which closes the last-minute window on take-over
+    // (lastminute_until = now()) — otherwise the new shopper briefly sees the
+    // previous shopper's open window until reload() corrects it.
+    const updated: Trip = { ...trip, shopper_id: userId, shopper_name: me?.display_name ?? 'You', lastminute_until: now(), started_at: now() };
+    set((s) => ({ trip: updated, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
     get().remote?.takeOverShopping(trip.id);
   },
 
   cancelShopping() {
     // Lock-release exit (§2.6): return the list to everyone.
     const { trip } = get();
-    set({
-      trip: { ...trip, status: 'active', shopper_id: null, shopper_name: null, lastminute_until: null, started_at: null },
-    });
+    const updated: Trip = { ...trip, status: 'active', shopper_id: null, shopper_name: null, lastminute_until: null, started_at: null };
+    set((s) => ({ trip: updated, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
     get().remote?.cancelShopping(trip.id);
   },
 
   finishTrip() {
-    const { trip, items, remote } = get();
-    const bought = items.filter((i) => i.status === 'bought' || i.status === 'substituted').length;
+    const { trip, items, remote, allTrips } = get();
+    // Scope completion to the shop tab in view (#19) — other shops' lists are
+    // independent and untouched.
+    const mine = items.filter((i) => i.trip_id === trip.id);
+    const others = items.filter((i) => i.trip_id !== trip.id);
+    const bought = mine.filter((i) => i.status === 'bought' || i.status === 'substituted').length;
     // Roll over everything not bought (un-ticked + not-found) so nothing is lost.
-    const carry = items.filter((i) => i.status === 'pending' || i.status === 'not_found');
+    const carry = mine.filter((i) => i.status === 'pending' || i.status === 'not_found');
     const rolled = carry.length;
 
     // In Supabase mode the server owns the completion transaction (§7.4): it
-    // creates the fresh active trip and rolls items with real ids, then the sync
-    // layer reloads. We don't build a local trip here or its id would diverge.
+    // creates the fresh active trip (same shop) and rolls items with real ids, then
+    // the sync layer reloads. We don't build a local trip here or its id would diverge.
     if (remote) {
       remote.completeTrip(trip.id);
       get().pushToast(`Trip done. ${bought} bought, ${rolled} rolled over.`);
       return;
     }
 
-    // Demo: mirror the server — fresh active trip + roll over un-bought items.
+    // Demo: mirror the server — fresh active trip on the SAME shop + rolled items.
     const newTrip: Trip = {
       id: uid(),
       group_id: trip.group_id,
       status: 'active',
+      shop_id: trip.shop_id ?? null,
       shopper_id: null,
       shopper_name: null,
       lastminute_until: null,
@@ -478,7 +641,11 @@ export const useStore = create<StoreState>((set, get) => ({
       created_at: now(),
     }));
 
-    set({ trip: newTrip, items: rolledItems });
+    set({
+      trip: newTrip,
+      allTrips: allTrips.map((t) => (t.id === trip.id ? newTrip : t)),
+      items: [...others, ...rolledItems],
+    });
     get().pushToast(`Trip done. ${bought} bought, ${rolled} rolled over.`);
   },
 

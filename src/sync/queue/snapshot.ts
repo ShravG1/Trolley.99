@@ -1,4 +1,4 @@
-import type { GroupMember, Item, MyGroup, Trip } from '@/types/models';
+import type { GroupMember, Item, MyGroup, Shop, Trip } from '@/types/models';
 import type { QueuedOp } from './types';
 
 // -----------------------------------------------------------------------------
@@ -13,7 +13,12 @@ import type { QueuedOp } from './types';
 export interface CachedSnapshot {
   userId: string;
   groups: MyGroup[];
-  trip: Trip;
+  trip: Trip; // the selected tab's trip at save time (kept for the group-match check)
+  // Per-shop tabs (#19). Absent in caches written before this shipped — restore
+  // then falls back to a single Unsorted list ([trip], no shops).
+  trips?: Trip[]; // all current trips, one per shop tab
+  shops?: Shop[];
+  activeShopId?: string | null;
   members: GroupMember[];
   items: Item[]; // server rows as fetched — offline changes are re-applied from the queue
   savedAt: number;

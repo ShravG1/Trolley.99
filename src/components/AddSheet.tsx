@@ -24,6 +24,8 @@ export function AddSheet({ open, onClose }: Props) {
   const multiAddCount = useStore((s) => s.multiAddCount);
   const resetMultiAdd = useStore((s) => s.resetMultiAdd);
   const groupId = useStore((s) => s.trip.group_id);
+  const shops = useStore((s) => s.shops);
+  const activeShopId = useStore((s) => s.activeShopId);
 
   const [name, setName] = useState('');
   const [qty, setQty] = useState(1);
@@ -31,6 +33,12 @@ export function AddSheet({ open, onClose }: Props) {
   const [urgent, setUrgent] = useState(false);
   const [aisle, setAisle] = useState<AisleKey>('other');
   const [aisleOpen, setAisleOpen] = useState(false);
+  // Which shop tab to add to (#19) — defaults to the one in view; re-synced each
+  // time the sheet opens so it tracks the current tab.
+  const [targetShop, setTargetShop] = useState<string | null>(activeShopId);
+  useEffect(() => {
+    if (open) setTargetShop(activeShopId);
+  }, [open, activeShopId]);
   // Learned hot list (frequency-ranked from completed trips); falls back to the
   // starter list below until the group has shopping history (§2.4).
   const [hot, setHot] = useState<string[]>([]);
@@ -59,7 +67,7 @@ export function AddSheet({ open, onClose }: Props) {
 
   function commit() {
     if (!name.trim()) return;
-    addItem({ name, quantity: qty, category: aisle, urgent, unit });
+    addItem({ name, quantity: qty, category: aisle, urgent, unit, shopId: targetShop });
     // Keep the sheet open for rapid multi-add (§2.4).
     setName('');
     setQty(1);
@@ -91,6 +99,29 @@ export function AddSheet({ open, onClose }: Props) {
             </button>
           )}
         </div>
+
+        {/* Shop tab to add to (#19) — only when there are shops to choose from. */}
+        {shops.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="px-0.5 text-caption text-ink-faint">Shop</span>
+            <div className="flex flex-wrap gap-2">
+              {[{ id: null as string | null, name: 'Unsorted' }, ...shops].map((s) => {
+                const active = (targetShop ?? null) === s.id;
+                return (
+                  <button
+                    key={s.id ?? 'unsorted'}
+                    onClick={() => setTargetShop(s.id)}
+                    className={`min-h-11 rounded-pill border px-3 text-meta font-semibold ${
+                      active ? 'border-transparent bg-brand text-on-brand' : 'border-line text-ink'
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Type-ahead chips, most-frequent first */}
         <div className="flex flex-wrap gap-2">

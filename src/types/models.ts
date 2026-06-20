@@ -29,6 +29,10 @@ export type RecurrenceRule =
 
 export type Group = Row<'groups'>;
 
+// A named tab within a group's list (#19). Each shop runs its own trip
+// lifecycle; items belong to a shop via their trip's shop_id (NULL = Unsorted).
+export type Shop = Row<'shops'>;
+
 export interface GroupMember extends Omit<Row<'group_members'>, 'role'> {
   role: 'member';
 }
@@ -47,6 +51,7 @@ export type Invite = Row<'invites'>;
 export interface Trip extends Row<'trips'> {
   // Resolved from group_members at read time for display; never on the row (§6.5).
   shopper_name: string | null;
+  // shop_id comes from the row (#19): NULL = the Unsorted tab.
 }
 
 export interface Item extends Omit<Row<'items'>, 'category' | 'added_by'> {
