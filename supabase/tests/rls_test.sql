@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(27);
+select plan(28);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -267,6 +267,18 @@ select is(
     where t.shop_id = :'shop_a' and t.status = 'active'
       and i.name = 'Shampoo' and i.status = 'pending')::int, 1,
   'a shop trip rolls its un-bought items into the shop''s next trip (#19)');
+
+-- Move-window parity (#19 review, 0015): the redefined RPC still moves an item
+-- onto a shop's ACTIVE trip normally — the common path. (Its new rejection, for a
+-- mid-shop shop whose last-minute window has shut, can't be faithfully asserted
+-- here: now() is frozen in this single test transaction and clients can't UPDATE
+-- trips to backdate a window, so that path is enforced in code and covered by
+-- review.) Razors currently sits on Unsorted (moved above); move it into Tesco.
+select move_item_to_shop(:'move_item', :'shop_a');
+select is(
+  (select t.shop_id from items i join trips t on t.id = i.trip_id where i.id = :'move_item'),
+  :'shop_a'::uuid,
+  'move_item_to_shop still reparents onto a shop''s active trip (#19 review, 0015)');
 
 select * from finish();
 rollback;
