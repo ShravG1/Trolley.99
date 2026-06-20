@@ -17,6 +17,7 @@ import { ShopTabs } from '@/components/ShopTabs';
 import { AddSheet } from '@/components/AddSheet';
 import { ItemSheet } from '@/components/ItemSheet';
 import { ItemMenuSheet } from '@/components/ItemMenuSheet';
+import { CartLoader } from '@/components/CartLoader';
 import { StartShoppingSheet } from '@/components/StartShoppingSheet';
 import { PrimaryPill } from '@/components/PrimaryPill';
 import { ProgressBar } from '@/components/ProgressBar';
@@ -99,7 +100,7 @@ export function Home() {
   if (switching) {
     return (
       <div className="grid min-h-dvh place-items-center">
-        <p className="font-display text-display-s text-ink-soft">Loading…</p>
+        <CartLoader caption="Loading…" />
       </div>
     );
   }

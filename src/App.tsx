@@ -14,6 +14,7 @@ import { Onboarding } from '@/components/Onboarding';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { CartLoader } from '@/components/CartLoader';
 import { useSupabaseSync } from '@/sync/useSupabaseSync';
 import { useStore } from '@/store/useStore';
 import { showOverviewNow } from '@/lib/landing';
@@ -80,7 +81,7 @@ export default function App() {
 function Splash() {
   return (
     <div className="grid min-h-dvh place-items-center">
-      <p className="font-display text-display-s text-ink-soft">Trolley…</p>
+      <CartLoader caption="Trolley…" />
     </div>
   );
 }
