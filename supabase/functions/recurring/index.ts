@@ -1,10 +1,12 @@
 // Edge Function: recurring (§2.8, §7.4, §12)
 //
-// Scheduled (cron) — adds group-level routine items to each group's ACTIVE trip
-// on schedule. Idempotent per (item, date) via last_added_at so a re-run never
-// double-adds. If a group is mid-shop, the item lands on the NEXT active trip,
-// not the locked one — we only ever insert into the row where status='active'
-// (§12).
+// Scheduled (cron) — adds group-level routine items to each group's UNSORTED
+// active trip on schedule. Idempotent per (item, date) via last_added_at so a
+// re-run never double-adds. Routine items are group-level with no shop, so they
+// land on the shop-less ("Unsorted") trip (#19); the household can move them to a
+// shop afterwards. If that trip is mid-shop, the item lands on the NEXT active
+// Unsorted trip, not the locked one — we only ever insert into the row where
+// status='active' AND shop_id IS NULL (§12).
 //
 // Runs with service_role (bypasses RLS) because there's no user context; it
 // must therefore be careful to scope every write by group_id.
@@ -56,13 +58,16 @@ Deno.serve(async (req) => {
   for (const r of recurring ?? []) {
     if (!dueToday(r.recurrence_rule, r.last_added_at)) continue;
 
-    // The current ACTIVE trip for the group (mid-shop trips are skipped — item
-    // lands on the next one, §12).
+    // The group's current UNSORTED active trip (#19) — there's now one active
+    // trip per shop, so we scope to the shop-less row to stay single (and routine
+    // items have no shop). A mid-shop Unsorted trip is skipped — the item lands on
+    // the next one (§12).
     const { data: trip } = await admin
       .from('trips')
       .select('id')
       .eq('group_id', r.group_id)
       .eq('status', 'active')
+      .is('shop_id', null)
       .maybeSingle();
     if (!trip) continue;
 
