@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
+import { DEFAULT_SHOP_LABEL } from '@/lib/activeShop';
 import { groupForList, groupForShopping, counts } from '@/lib/grouping';
 import { isShopStale, lastActivity } from '@/lib/rules';
 import { withViewTransition } from '@/lib/viewTransition';
@@ -31,6 +32,7 @@ export function Home() {
   const items = useStore((s) => s.items);
   const trip = useStore((s) => s.trip);
   const shops = useStore((s) => s.shops);
+  const activeShopId = useStore((s) => s.activeShopId);
   const mode = useStore((s) => s.mode());
   const shopperName = useStore((s) => s.shopperName());
   const userId = useStore((s) => s.userId);
@@ -109,6 +111,10 @@ export function Home() {
   const { total, done } = counts(viewItems);
   // Active group, for the header switcher (§12). Absent in demo mode (no backend).
   const activeGroup = groups.find((g) => g.group_id === activeGroupId);
+  // Which shop tab is in view (#19) — only meaningful once the household has
+  // shops; null shop = the default "General" list. Used to name the shop in the
+  // shopping header + empty state so it's clear which shop you're in/shopping.
+  const shopName = shops.length > 0 ? (shops.find((s) => s.id === activeShopId)?.name ?? DEFAULT_SHOP_LABEL) : null;
   // Who's live on the list right now — minus yourself, and (in spectator view)
   // the shopper, who's already named by the banner (§6.4).
   const watching = viewerNames(viewers, members, [userId, trip.shopper_id ?? userId]);
@@ -164,6 +170,7 @@ export function Home() {
           )}
           <h1 className="font-display text-display-l text-ink">
             {mode === 'list' ? 'The List' : `${shopperName === membersName(userId, members) ? 'Your' : `${shopperName}’s`} shop`}
+            {mode !== 'list' && shopName && <span className="text-ink-soft"> · {shopName}</span>}
           </h1>
           <div className="flex items-center gap-3">
             <p className="text-meta text-ink-soft">
@@ -207,7 +214,14 @@ export function Home() {
 
       {/* Body */}
       {total === 0 ? (
-        <EmptyState line="Nothing on the list. Living dangerously." />
+        shopName ? (
+          <EmptyState
+            line={`Nothing in ${shopName} yet.`}
+            sub={mode === 'list' ? 'Add something below, or switch shops up top.' : undefined}
+          />
+        ) : (
+          <EmptyState line="Nothing on the list. Living dangerously." />
+        )
       ) : mode === 'list' ? (
         <ListBody items={viewItems} {...rowProps} />
       ) : (

@@ -10,6 +10,7 @@ const STEPS: Array<{ icon: string; title: string; body: string }> = [
   { icon: '🛒', title: 'Off to the shop?', body: 'Tap “I’m going shopping”. The list reorders into aisle order and the others watch it tick off live.' },
   { icon: '✅', title: 'Tick as you go', body: 'Swipe a row right (or tap the circle) to mark it bought. Can’t find it? Swipe left → “Not found” and it rolls over to next time.' },
   { icon: '🔔', title: 'Flag the urgent stuff', body: 'Mark something urgent and everyone gets a ping (once notifications are on). You’re never pinged about your own.' },
+  { icon: '🏪', title: 'Split it into shops', body: 'Doing a Tesco run and a pharmacy trip? Tap “＋ Add a shop” above the list to give each shop its own tab — shop them separately, even at the same time. Everything else stays under “General”.' },
   { icon: '👋', title: 'Bring the household in', body: 'Settings → Add people → share the link or code. They tap it, pop their name in, and they’re on your list.' },
 ];
 

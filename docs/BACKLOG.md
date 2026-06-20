@@ -3,6 +3,16 @@
 Running list so nothing's lost between sessions. Newest intent at the top.
 
 ## ⏸️ Parked — come back to these
+- **Offline edit can be lost if another member finishes that trip first.**
+  `complete_trip` mints NEW item ids for rolled-over (pending/not-found) items, but
+  the offline queue replays a patch by item id — so an edit made offline while a
+  *different* member completes that same trip lands on the now-completed-trip row
+  and never reaches the rolled-over twin (silently dropped on the next reload).
+  Rare (needs a concurrent rollover inside your offline window) and pre-dates
+  per-shop tabs. Offline *adds* are safe — `items_insert` rejects inserts into a
+  completed trip, so they surface as a "changes dropped" toast rather than orphaning.
+  A proper fix needs stable item ids across rollover (which rewrites completed-trip
+  history), so it's deferred. (Found in the #19 review.)
 - **Offline real-world test pass.** Validate the offline queue + read-cache on a
   real phone with patchy signal / airplane mode. Steps in `docs/OFFLINE_TEST_PASS.md`.
 - **Offline trip lifecycle (start/finish) — decision pending.** Sticking with the
