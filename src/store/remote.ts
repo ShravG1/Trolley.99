@@ -17,4 +17,11 @@ export interface RemoteWriter {
   takeOverShopping(tripId: string): void;
   /** Notify an item's owner that it was binned / not found (§2.10). */
   notify(kind: 'binned' | 'not_found', ownerId: string, itemName: string, actorName: string): void;
+
+  // Shop tabs (#19). Create resolves the active group itself; all four reconcile
+  // via a reload (shops/trips aren't in the optimistic item queue).
+  createShop(name: string): void;
+  renameShop(shopId: string, name: string): void;
+  deleteShop(shopId: string): void;
+  moveItem(itemId: string, shopId: string | null): void;
 }

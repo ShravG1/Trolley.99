@@ -13,7 +13,9 @@ interface Props {
 // ItemSheet (§2.3) — tap-body edit (name, qty, aisle, urgent) plus the swipe-left
 // actions (Substitute / Not found / Delete). One sheet, both jobs.
 export function ItemSheet({ item, onClose }: Props) {
-  const { setQuantity, setCategory, renameItem, setNote, setUnit, toggleUrgent, substitute, markNotFound, deleteItem } = useStore();
+  const { setQuantity, setCategory, renameItem, setNote, setUnit, toggleUrgent, substitute, markNotFound, deleteItem, moveItem } = useStore();
+  const shops = useStore((s) => s.shops);
+  const allTrips = useStore((s) => s.allTrips);
 
   const [subbing, setSubbing] = useState(false);
   const [subName, setSubName] = useState('');
@@ -32,6 +34,11 @@ export function ItemSheet({ item, onClose }: Props) {
   }, [item?.id, item?.name, item?.unit, item?.note]);
 
   if (!item) return null;
+
+  // Which shop this item is currently in (#19), and whether it can be moved
+  // (only still-live items — a bought/substituted row belongs to a finished shop).
+  const currentShopId = allTrips.find((t) => t.id === item.trip_id)?.shop_id ?? null;
+  const movable = item.status === 'pending' || item.status === 'not_found';
 
   return (
     <BottomSheet open={!!item} onClose={onClose} title={item.name}>
@@ -144,6 +151,32 @@ export function ItemSheet({ item, onClose }: Props) {
               })}
             </div>
           </div>
+
+          {/* Shop (#19) — move a still-live item to another shop's list. */}
+          {shops.length > 0 && movable && (
+            <div>
+              <span className="mb-2 block text-item text-ink">Shop</span>
+              <div className="flex flex-wrap gap-2">
+                {[{ id: null as string | null, name: 'Unsorted' }, ...shops].map((s) => {
+                  const active = (currentShopId ?? null) === s.id;
+                  return (
+                    <button
+                      key={s.id ?? 'unsorted'}
+                      onClick={() => {
+                        if (!active) moveItem(item.id, s.id);
+                        onClose();
+                      }}
+                      className={`min-h-11 rounded-pill border px-3 text-meta font-semibold ${
+                        active ? 'border-transparent bg-brand text-on-brand' : 'border-line text-ink'
+                      }`}
+                    >
+                      {s.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <label className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-4 py-3">
             <span className="text-item text-ink">Urgent</span>

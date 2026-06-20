@@ -9,13 +9,15 @@ import {
   fetchServerTime,
   probeConnectivity,
   ensureSession,
+  fetchShops,
 } from '@/lib/supabase';
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
-import type { GroupMember, Item, Trip } from '@/types/models';
+import type { GroupMember, Item, Shop, Trip } from '@/types/models';
 import type { Database } from '@/types/database';
 import { throttle } from '@/lib/throttle';
 import { resolveActiveGroup } from '@/lib/activeGroup';
+import { loadActiveShop, resolveActiveShop } from '@/lib/activeShop';
 import { setServerOffset, computeOffset } from '@/lib/serverTime';
 import { createItemWriter, type InnerItemWriter } from './itemWriter';
 import { createOpStore } from './queue/idb';
@@ -71,6 +73,7 @@ function rowToTrip(r: Row, members: GroupMember[]): Trip {
     id: r.id as string,
     group_id: r.group_id as string,
     status: r.status as Trip['status'],
+    shop_id: (r.shop_id as string) ?? null, // missing pre-migration → Unsorted (#19)
     shopper_id: shopperId,
     shopper_name: shopperId ? (members.find((m) => m.user_id === shopperId)?.display_name ?? null) : null,
     lastminute_until: (r.lastminute_until as string) ?? null,
@@ -88,10 +91,12 @@ export function useSupabaseSync(): Sync {
   // bootstrap effect below, re-scoping every channel to the new group.
   const activeGroupId = useStore((s) => s.activeGroupId);
 
-  const itemsChannel = useRef<RealtimeChannel | null>(null);
+  // One items channel per current trip (#19) — a group now has several current
+  // trips (one per shop tab), and each shop runs its own lifecycle. Keyed by
+  // trip id so a reload only (un)subscribes the trips that actually changed.
+  const itemsChannels = useRef<Map<string, RealtimeChannel>>(new Map());
   const tripsChannel = useRef<RealtimeChannel | null>(null);
   const presenceChannel = useRef<RealtimeChannel | null>(null);
-  const currentTripId = useRef<string | null>(null);
   const groupId = useRef<string | null>(null);
   // True when this boot fell back to the cached snapshot (offline) — the first
   // reconnect then does a full re-bootstrap to re-establish realtime (§5/§10).
@@ -178,58 +183,77 @@ export function useSupabaseSync(): Sync {
       return (data ?? []) as GroupMember[];
     }
 
-    // Fetch the current (active or shopping) trip + its items + members and push
-    // the snapshot into the store. Re-subscribes the items channel if the active
-    // trip changed (handles the post-completion handoff).
+    // Fetch the group's shops + ALL current (active|shopping) trips — one per shop
+    // tab incl. the Unsorted shop-less trip — plus the items across them, and push
+    // the snapshot into the store (#19). Re-subscribes the items channels to the
+    // current trip set (handles new shops + the post-completion handoff).
     async function reload() {
       const gid = groupId.current;
       if (!gid || cancelled) return;
       const members = await fetchMembers(gid);
-      const { data: trips } = await sb
+      const shops = await fetchShops(gid); // [] if the shops backend isn't present yet
+      const { data: tripRows } = await sb
         .from('trips')
         .select('*')
         .eq('group_id', gid)
-        .in('status', ['active', 'shopping'])
-        .order('started_at', { ascending: false })
-        .limit(1);
-      const tripRow = trips?.[0];
-      if (!tripRow) return;
-      const trip = rowToTrip(tripRow as Row, members);
+        .in('status', ['active', 'shopping']);
+      const trips = (tripRows ?? []).map((r) => rowToTrip(r as Row, members));
+      if (trips.length === 0) return; // every group always has ≥1 active trip
+      const tripIds = trips.map((t) => t.id);
 
-      const { data: itemRows } = await sb.from('items').select('*').eq('trip_id', trip.id);
+      const { data: itemRows } = await sb.from('items').select('*').in('trip_id', tripIds);
       const items = (itemRows ?? []).map((r) => rowToItem(r as Row));
 
+      // Resolve the tab to show: keep the user's current choice if it still has a
+      // trip, else their saved per-group preference, else Unsorted (#19).
+      const shopIdsWithTrip = new Set(
+        trips.map((t) => t.shop_id).filter((id): id is string => id != null)
+      );
+      const pref = useStore.getState().activeShopId ?? loadActiveShop(gid);
+      const activeShopId = resolveActiveShop(pref, shopIdsWithTrip);
+
       if (cancelled) return;
-      useStore.getState().loadSnapshot({ userId: session!.user.id, members, trip, items });
+      useStore.getState().loadSnapshot({ userId: session!.user.id, members, shops, trips, items, activeShopId });
 
       // Persist the server snapshot so an offline boot can show this list (§5/§10).
       // Best-effort + cached items are the raw server rows (offline edits are
       // re-applied from the queue on restore, so they're not double-counted).
       if (CACHE_ENABLED) {
-        const { groups, userId } = useStore.getState();
-        void saveSnapshot({ userId, groups, trip, members, items, savedAt: Date.now() });
+        const { groups, userId, trip } = useStore.getState();
+        void saveSnapshot({
+          userId, groups, trip, trips, shops, activeShopId, members, items, savedAt: Date.now(),
+        });
       }
 
-      if (currentTripId.current !== trip.id) {
-        currentTripId.current = trip.id;
-        subscribeItems(trip.id);
-      }
+      subscribeItemsForTrips(tripIds);
     }
 
-    function subscribeItems(tripId: string) {
-      itemsChannel.current?.unsubscribe();
-      // Realtime respects RLS; the filter keeps us to this trip only (§5.1, §6.4).
-      itemsChannel.current = sb
-        .channel(`items:${tripId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'items', filter: `trip_id=eq.${tripId}` },
-          (payload) => {
-            if (payload.eventType === 'DELETE') return;
-            useStore.getState().applyServerItem(rowToItem(payload.new as Row));
-          }
-        )
-        .subscribe();
+    // Keep an items channel open for exactly the current set of trip ids: drop the
+    // ones that went away (a shop deleted / a trip completed) and open the new ones.
+    function subscribeItemsForTrips(tripIds: string[]) {
+      const desired = new Set(tripIds);
+      for (const [tid, ch] of itemsChannels.current) {
+        if (!desired.has(tid)) {
+          ch.unsubscribe();
+          itemsChannels.current.delete(tid);
+        }
+      }
+      for (const tid of desired) {
+        if (itemsChannels.current.has(tid)) continue;
+        // Realtime respects RLS; the filter keeps us to this trip only (§5.1, §6.4).
+        const ch = sb
+          .channel(`items:${tid}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'items', filter: `trip_id=eq.${tid}` },
+            (payload) => {
+              if (payload.eventType === 'DELETE') return;
+              useStore.getState().applyServerItem(rowToItem(payload.new as Row));
+            }
+          )
+          .subscribe();
+        itemsChannels.current.set(tid, ch);
+      }
     }
 
     function subscribeTrips(gid: string) {
@@ -280,10 +304,15 @@ export function useSupabaseSync(): Sync {
       // Only show a cached list if it's the group we're trying to view.
       if (activeGroupId && cache.trip.group_id !== activeGroupId) return false;
       groupId.current = cache.trip.group_id;
-      currentTripId.current = cache.trip.id;
       const items = await reconcileWithQueue(cache.items);
       if (cancelled) return false;
-      useStore.getState().loadSnapshot({ userId: cache.userId, members: cache.members, trip: cache.trip, items });
+      // Caches written before per-shop tabs (#19) only have a single `trip`.
+      const trips = cache.trips ?? [cache.trip];
+      const shops: Shop[] = cache.shops ?? [];
+      const activeShopId = cache.activeShopId ?? null;
+      useStore.getState().loadSnapshot({
+        userId: cache.userId, members: cache.members, shops, trips, items, activeShopId,
+      });
       return true;
     }
 
@@ -354,13 +383,12 @@ export function useSupabaseSync(): Sync {
       cancelled = true;
       window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisible);
-      itemsChannel.current?.unsubscribe();
+      for (const ch of itemsChannels.current.values()) ch.unsubscribe();
+      itemsChannels.current.clear();
       tripsChannel.current?.unsubscribe();
       presenceChannel.current?.unsubscribe();
-      itemsChannel.current = null;
       tripsChannel.current = null;
       presenceChannel.current = null;
-      currentTripId.current = null;
       // Stop any queued trailing update, then drop the group slice so a switch
       // can't show/act on the previous group while the new snapshot loads (§12).
       pushViewers.cancel();
@@ -558,6 +586,43 @@ function installWriter(reload: () => Promise<void>) {
         .catch(() => {
           /* best-effort; never block the UI */
         });
+    },
+
+    // Shop tabs (#19). These touch trips/shops, not the optimistic item queue, so
+    // each fires its RPC then reload()s to reconcile (the DB is the truth).
+    createShop(name) {
+      void (async () => {
+        const { data, error } = await sb.rpc('create_shop', { p_group_id: groupIdOf(), p_name: name });
+        if (error || !data) {
+          useStore.getState().pushToast('Couldn’t add that shop.');
+          return;
+        }
+        await reload(); // pulls the new shop + its active trip
+        useStore.getState().setActiveShop(data as string); // jump to the new tab
+      })();
+    },
+
+    renameShop(shopId, name) {
+      void (async () => {
+        const { error } = await sb.rpc('rename_shop', { p_shop_id: shopId, p_name: name });
+        if (error) await reload(); // revert the optimistic rename
+      })();
+    },
+
+    deleteShop(shopId) {
+      void (async () => {
+        const { error } = await sb.rpc('delete_shop', { p_shop_id: shopId });
+        if (error) useStore.getState().pushToast('Couldn’t delete that shop.');
+        await reload(); // pulls reparented items + drops the shop
+      })();
+    },
+
+    moveItem(itemId, shopId) {
+      void (async () => {
+        const { error } = await sb.rpc('move_item_to_shop', { p_item_id: itemId, p_shop_id: shopId });
+        if (error) useStore.getState().pushToast('Couldn’t move that.');
+        await reload(); // reconcile the reparented trip_id
+      })();
     },
   };
 

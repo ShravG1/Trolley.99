@@ -2,15 +2,20 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore } from './useStore';
 import { seedItems, seedMembers, seedTrip, CURRENT_USER } from './seed';
 
-// Reset the singleton store to a known state before each test.
+// Reset the singleton store to a known state before each test. Includes the
+// per-shop tab fields (#19) so a test that creates shops can't leak into the next.
 beforeEach(() => {
   useStore.setState({
     userId: CURRENT_USER.user_id,
     members: seedMembers,
     trip: { ...seedTrip },
+    allTrips: [{ ...seedTrip }],
+    shops: [],
+    activeShopId: null,
     items: seedItems.map((i) => ({ ...i })),
     toasts: [],
     multiAddCount: 0,
+    remote: null,
   });
 });
 
@@ -267,5 +272,93 @@ describe('setMyName — rename propagation (§5.4)', () => {
       (m) => m.user_id === CURRENT_USER.user_id
     )!;
     expect(me.display_name).toBe('Shrav'); // unchanged
+  });
+});
+
+describe('shop tabs (#19)', () => {
+  const tripOf = (shopId: string | null) =>
+    useStore.getState().allTrips.find((t) => (t.shop_id ?? null) === shopId)!;
+
+  it('createShop adds a tab with its own active trip and selects it (demo)', () => {
+    useStore.getState().createShop('Tesco');
+    const s = useStore.getState();
+    const tesco = s.shops.find((sh) => sh.name === 'Tesco')!;
+    expect(tesco).toBeTruthy();
+    expect(s.activeShopId).toBe(tesco.id);
+    expect(s.trip.shop_id).toBe(tesco.id);
+    expect(s.trip.status).toBe('active');
+    expect(s.allTrips.some((t) => t.shop_id === tesco.id && t.status === 'active')).toBe(true);
+  });
+
+  it('addItem targets the shop tab in view', () => {
+    useStore.getState().createShop('Tesco'); // now in view
+    const tripId = useStore.getState().trip.id;
+    useStore.getState().addItem({ name: 'Razors', quantity: 1, urgent: false });
+    expect(useStore.getState().items.find((i) => i.name === 'Razors')!.trip_id).toBe(tripId);
+  });
+
+  it('addItem with an explicit shopId adds to that shop, not the tab in view', () => {
+    useStore.getState().createShop('Tesco');
+    const tesco = useStore.getState().shops[0];
+    useStore.getState().setActiveShop(null); // viewing Unsorted
+    useStore.getState().addItem({ name: 'Razors', quantity: 1, urgent: false, shopId: tesco.id });
+    expect(useStore.getState().items.find((i) => i.name === 'Razors')!.trip_id).toBe(tripOf(tesco.id).id);
+  });
+
+  it('dedupe is per shop — the same name in another shop is a new row', () => {
+    const milkBefore = useStore.getState().items.filter((i) => i.name.toLowerCase() === 'milk').length;
+    useStore.getState().createShop('Tesco'); // now viewing Tesco
+    useStore.getState().addItem({ name: 'Milk', quantity: 1, urgent: false });
+    const milkAfter = useStore.getState().items.filter((i) => i.name.toLowerCase() === 'milk');
+    expect(milkAfter.length).toBe(milkBefore + 1); // Unsorted milk untouched, Tesco milk added
+  });
+
+  it('setActiveShop switches the visible trip', () => {
+    useStore.getState().createShop('Tesco');
+    const tesco = useStore.getState().shops[0];
+    useStore.getState().setActiveShop(null);
+    expect(useStore.getState().trip.shop_id).toBeNull();
+    useStore.getState().setActiveShop(tesco.id);
+    expect(useStore.getState().trip.shop_id).toBe(tesco.id);
+  });
+
+  it('moveItem reparents an item onto another shop’s trip', () => {
+    useStore.getState().createShop('Tesco');
+    const tesco = useStore.getState().shops[0];
+    useStore.getState().setActiveShop(null);
+    const milk = useStore.getState().items.find((i) => i.name === 'Milk')!;
+    useStore.getState().moveItem(milk.id, tesco.id);
+    expect(useStore.getState().items.find((i) => i.id === milk.id)!.trip_id).toBe(tripOf(tesco.id).id);
+  });
+
+  it('finishTrip is scoped to the selected shop — other shops are untouched', () => {
+    useStore.getState().createShop('Tesco'); // viewing Tesco
+    useStore.getState().addItem({ name: 'Razors', quantity: 1, urgent: false });
+    const unsortedBefore = useStore.getState().items.filter((i) => i.trip_id === tripOf(null).id).length;
+
+    useStore.getState().startShopping(0);
+    const razors = useStore.getState().items.find((i) => i.name === 'Razors')!;
+    useStore.getState().markBought(razors.id);
+    useStore.getState().finishTrip();
+
+    // Unsorted list is exactly as it was.
+    expect(useStore.getState().items.filter((i) => i.trip_id === tripOf(null).id).length).toBe(unsortedBefore);
+    // Tesco's bought item didn't roll over; its fresh trip is empty.
+    const tesco = useStore.getState().shops[0];
+    expect(useStore.getState().items.filter((i) => i.trip_id === tripOf(tesco.id).id).length).toBe(0);
+  });
+
+  it('deleteShop carries live items back to Unsorted and removes the tab', () => {
+    useStore.getState().createShop('Tesco');
+    useStore.getState().addItem({ name: 'Razors', quantity: 1, urgent: false }); // on Tesco
+    const tesco = useStore.getState().shops[0];
+    useStore.getState().deleteShop(tesco.id);
+
+    const s = useStore.getState();
+    expect(s.shops.find((sh) => sh.id === tesco.id)).toBeUndefined();
+    expect(s.activeShopId).toBeNull();
+    const razors = s.items.find((i) => i.name === 'Razors')!;
+    const razorsTrip = s.allTrips.find((t) => t.id === razors.trip_id)!;
+    expect(razorsTrip.shop_id ?? null).toBeNull(); // moved to Unsorted
   });
 });

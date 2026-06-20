@@ -12,6 +12,7 @@ import type { Item } from '@/types/models';
 
 import { ItemRow } from '@/components/ItemRow';
 import { AisleHeader } from '@/components/AisleHeader';
+import { ShopTabs } from '@/components/ShopTabs';
 import { AddSheet } from '@/components/AddSheet';
 import { ItemSheet } from '@/components/ItemSheet';
 import { StartShoppingSheet } from '@/components/StartShoppingSheet';
@@ -98,16 +99,20 @@ export function Home() {
     );
   }
 
-  const { total, done } = counts(items);
+  // Scope the view to the shop tab in focus (#19): every count/section below is
+  // about the selected shop's trip. Other shops' items stay in the store (for the
+  // tab badges) but never render here.
+  const viewItems = items.filter((i) => i.trip_id === trip.id);
+  const { total, done } = counts(viewItems);
   // Active group, for the header switcher (§12). Absent in demo mode (no backend).
   const activeGroup = groups.find((g) => g.group_id === activeGroupId);
   // Who's live on the list right now — minus yourself, and (in spectator view)
   // the shopper, who's already named by the banner (§6.4).
   const watching = viewerNames(viewers, members, [userId, trip.shopper_id ?? userId]);
   // Judge the window/staleness against server time, not the device clock (§6.5).
-  const stale = isShopStale(trip, lastActivity(trip, items), serverNow());
-  const unbought = items.filter((i) => i.status === 'pending' || i.status === 'not_found').length;
-  const binnedCount = items.filter((i) => i.status === 'deleted').length;
+  const stale = isShopStale(trip, lastActivity(trip, viewItems), serverNow());
+  const unbought = viewItems.filter((i) => i.status === 'pending' || i.status === 'not_found').length;
+  const binnedCount = viewItems.filter((i) => i.status === 'deleted').length;
 
   const windowOpen = trip.lastminute_until ? new Date(trip.lastminute_until).getTime() > serverNow() : false;
   // Spectators (and the shopper's helpers) can only add while the window is open (§7.2).
@@ -175,6 +180,9 @@ export function Home() {
         </div>
       </header>
 
+      {/* Shop tabs (#19) — switch between shops; each runs its own trip. */}
+      <ShopTabs />
+
       {/* Live "who's looking" in every mode — incl. the shopper, who sees who's watching. */}
       <PresenceLine names={watching} />
 
@@ -189,9 +197,9 @@ export function Home() {
       {total === 0 ? (
         <EmptyState line="Nothing on the list. Living dangerously." />
       ) : mode === 'list' ? (
-        <ListBody {...rowProps} />
+        <ListBody items={viewItems} {...rowProps} />
       ) : (
-        <ShoppingBody readOnly={mode === 'spectator'} {...rowProps} />
+        <ShoppingBody items={viewItems} readOnly={mode === 'spectator'} {...rowProps} />
       )}
 
       {/* Bottom controls */}
@@ -308,6 +316,7 @@ function membersName(userId: string, members: { user_id: string; display_name: s
 }
 
 interface BodyProps {
+  items: Item[];
   readOnly?: boolean;
   onBought: (id: string) => void;
   onUndo: (id: string) => void;
@@ -316,8 +325,7 @@ interface BodyProps {
   onDelete: (id: string) => void;
 }
 
-function ListBody(props: BodyProps) {
-  const items = useStore((s) => s.items);
+function ListBody({ items, ...props }: BodyProps) {
   const { urgent, groups } = groupForList(items);
 
   return (
@@ -344,8 +352,7 @@ function ListBody(props: BodyProps) {
   );
 }
 
-function ShoppingBody({ readOnly, ...props }: BodyProps) {
-  const items = useStore((s) => s.items);
+function ShoppingBody({ items, readOnly, ...props }: BodyProps) {
   const groups = groupForShopping(items);
 
   return (
