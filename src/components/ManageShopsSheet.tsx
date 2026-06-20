@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { useStore } from '@/store/useStore';
+import { DEFAULT_SHOP_LABEL } from '@/lib/activeShop';
 import { PlusIcon, BinIcon } from './icons';
 
 interface Props {
@@ -9,8 +10,8 @@ interface Props {
 }
 
 // ManageShopsSheet (#19) — add a shop, rename one, or delete one. Deleting a shop
-// moves its un-bought items back to Unsorted (handled server-side), so nothing on
-// the list is lost.
+// moves its un-bought items back to the default "General" list (handled
+// server-side), so nothing on the list is lost.
 export function ManageShopsSheet({ open, onClose }: Props) {
   const shops = useStore((s) => s.shops);
   const createShop = useStore((s) => s.createShop);
@@ -85,7 +86,7 @@ export function ManageShopsSheet({ open, onClose }: Props) {
                 {confirmId === shop.id && (
                   <div className="mt-1 flex items-center gap-2 px-2 pb-1">
                     <span className="min-w-0 flex-1 text-meta text-ink-soft">
-                      Delete this shop? Its un-bought items move to Unsorted.
+                      Delete this shop? Its un-bought items move to {DEFAULT_SHOP_LABEL}.
                     </span>
                     <button
                       onClick={() => setConfirmId(null)}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { QtyStepper } from './QtyStepper';
+import { ShopChips } from './ShopChips';
 import { AISLES, AISLE_ORDER, aisleColor, type AisleKey } from '@/lib/aisles';
 import { guessAisle } from '@/lib/categorise';
 import { useStore } from '@/store/useStore';
@@ -104,22 +105,7 @@ export function AddSheet({ open, onClose }: Props) {
         {shops.length > 0 && (
           <div className="flex flex-col gap-1">
             <span className="px-0.5 text-caption text-ink-faint">Shop</span>
-            <div className="flex flex-wrap gap-2">
-              {[{ id: null as string | null, name: 'Unsorted' }, ...shops].map((s) => {
-                const active = (targetShop ?? null) === s.id;
-                return (
-                  <button
-                    key={s.id ?? 'unsorted'}
-                    onClick={() => setTargetShop(s.id)}
-                    className={`min-h-11 rounded-pill border px-3 text-meta font-semibold ${
-                      active ? 'border-transparent bg-brand text-on-brand' : 'border-line text-ink'
-                    }`}
-                  >
-                    {s.name}
-                  </button>
-                );
-              })}
-            </div>
+            <ShopChips value={targetShop} onSelect={setTargetShop} />
           </div>
         )}
 

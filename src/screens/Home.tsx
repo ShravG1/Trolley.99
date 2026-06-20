@@ -15,6 +15,7 @@ import { AisleHeader } from '@/components/AisleHeader';
 import { ShopTabs } from '@/components/ShopTabs';
 import { AddSheet } from '@/components/AddSheet';
 import { ItemSheet } from '@/components/ItemSheet';
+import { ItemMenuSheet } from '@/components/ItemMenuSheet';
 import { StartShoppingSheet } from '@/components/StartShoppingSheet';
 import { PrimaryPill } from '@/components/PrimaryPill';
 import { ProgressBar } from '@/components/ProgressBar';
@@ -29,6 +30,7 @@ import { PlusIcon, GearIcon, BinIcon, ChevronDownIcon } from '@/components/icons
 export function Home() {
   const items = useStore((s) => s.items);
   const trip = useStore((s) => s.trip);
+  const shops = useStore((s) => s.shops);
   const mode = useStore((s) => s.mode());
   const shopperName = useStore((s) => s.shopperName());
   const userId = useStore((s) => s.userId);
@@ -56,6 +58,7 @@ export function Home() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<Item | null>(null);
+  const [menuItem, setMenuItem] = useState<Item | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [finishConfirm, setFinishConfirm] = useState(false);
   // Re-evaluate staleness on a timer so "Take over" / "Still shopping?" appear
@@ -118,11 +121,20 @@ export function Home() {
   // Spectators (and the shopper's helpers) can only add while the window is open (§7.2).
   const canAdd = mode === 'list' || (mode === 'spectator' && windowOpen);
 
+  // The kebab opens the quick menu (move-between-shops + edit) when there are
+  // shops to move between and the item's still live; otherwise it goes straight
+  // to the full edit sheet, so a household with no shops sees no change (#19).
+  const openMenu = (item: Item) => {
+    const movable = item.status === 'pending' || item.status === 'not_found';
+    if (movable && shops.length > 0) setMenuItem(item);
+    else setEditItem(item);
+  };
+
   const rowProps = {
     onBought: markBought,
     onUndo: restoreItem,
     onEdit: setEditItem,
-    onMenu: setEditItem,
+    onMenu: openMenu,
     onDelete: deleteItem,
   };
 
@@ -275,6 +287,14 @@ export function Home() {
       {/* Sheets */}
       <AddSheet open={addOpen} onClose={() => setAddOpen(false)} />
       <ItemSheet item={editItem} onClose={() => setEditItem(null)} />
+      <ItemMenuSheet
+        item={menuItem}
+        onClose={() => setMenuItem(null)}
+        onEditDetails={(it) => {
+          setMenuItem(null);
+          setEditItem(it);
+        }}
+      />
       <StartShoppingSheet open={startOpen} onClose={() => setStartOpen(false)} />
 
       {/* Smart finish confirmation — only when there's something un-ticked to lose.
