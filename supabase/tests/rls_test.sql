@@ -47,7 +47,7 @@ insert into items (id, trip_id, name, added_by, added_by_name)
 select create_shop(:'gid_a', 'Tesco') as shop_a \gset
 -- A's item id, for the cross-group move-isolation check below (captured while it
 -- still lives on the original Unsorted trip, before the #11 rollover renames it).
-select id as item_a from items i join trips t on t.id = i.trip_id
+select i.id as item_a from items i join trips t on t.id = i.trip_id
   where t.group_id = :'gid_a' and i.name = 'A milk' limit 1 \gset
 
 -- --- Cross-group READ isolation ------------------------------------------
