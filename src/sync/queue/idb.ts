@@ -39,10 +39,29 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-function idbStore(db: IDBDatabase): OpStore {
+// Safari force-closes idle IDB connections (bfcache, backgrounding, memory
+// pressure); the next `db.transaction()` then throws synchronously
+// `InvalidStateError: ...connection is closing`. We treat that as a signal to
+// drop the dead handle so the store reopens on the next call.
+function isClosing(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'InvalidStateError';
+}
+
+// `onClosing` is invoked when the live handle is no longer usable, so the caller
+// can clear its cached open and reopen on the next access.
+function idbStore(db: IDBDatabase, onClosing: () => void): OpStore {
   function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
-      const req = op(db.transaction(STORE, mode).objectStore(STORE));
+      let req: IDBRequest<T>;
+      try {
+        req = op(db.transaction(STORE, mode).objectStore(STORE));
+      } catch (err) {
+        // A synchronous throw here (e.g. the connection is closing) must reject
+        // cleanly rather than escape this executor as an unhandled rejection.
+        if (isClosing(err)) onClosing();
+        reject(err);
+        return;
+      }
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -59,7 +78,15 @@ function idbStore(db: IDBDatabase): OpStore {
 export function createOpStore(): OpStore {
   if (typeof indexedDB === 'undefined') return createMemoryStore();
   let ready: Promise<OpStore> | null = null;
-  const store = () => (ready ??= openDb().then(idbStore).catch(() => createMemoryStore()));
+  // Dropping the cached open lets the next call reopen the DB instead of reusing
+  // a handle Safari has closed; if that reopen also fails we fall back to memory.
+  const reset = () => {
+    ready = null;
+  };
+  const store = () =>
+    (ready ??= openDb()
+      .then((db) => idbStore(db, reset))
+      .catch(() => createMemoryStore()));
   return {
     async getAll() {
       return (await store()).getAll();
