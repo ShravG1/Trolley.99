@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { signInWithMagicLink, isSupabaseConfigured } from '@/lib/supabase';
 
 // First run (§2.1) — single email field → magic link. No passwords.
@@ -73,7 +73,11 @@ export function Welcome() {
 
       <p className="text-center text-caption text-ink-faint">
         We store your email, list, and who did what — shared with your group. Delete it any time in
-        settings.
+        settings. See our{' '}
+        <Link to="/privacy" className="font-semibold text-brand underline">
+          privacy policy
+        </Link>
+        .
       </p>
     </div>
   );
