@@ -4,8 +4,15 @@ import { useStore } from '@/store/useStore';
 import { BottomSheet } from '@/components/BottomSheet';
 import { isSupabaseConfigured, leaveGroup, deleteGroup, clearHistory, deleteAccount } from '@/lib/supabase';
 
-// Short, honest privacy note (§11.2) + the account/group lifecycle controls
-// that are usually forgotten (§11.4) — now wired to real RPCs.
+// The contact address for data questions / erasure requests. Surfaced in the
+// policy below; change here if it ever moves.
+const CONTACT_EMAIL = 'calibrate.ai.uk@gmail.com';
+// Kept in sync with the policy text — bump when the substance changes (§11.2).
+const POLICY_UPDATED = '29 June 2026';
+
+// Full privacy policy (§11.2) + the account/group lifecycle controls that are
+// usually forgotten (§11.4) — wired to real RPCs. Reachable both from Settings
+// and, for people deciding whether to sign up, from the public Welcome screen.
 export function Privacy() {
   const groupId = useStore((s) => s.trip.group_id);
   const pushToast = useStore((s) => s.pushToast);
@@ -55,16 +62,73 @@ export function Privacy() {
         <h1 className="font-display text-display-l text-ink">Privacy & your data</h1>
       </header>
 
-      <div className="space-y-4 text-body text-ink-soft">
+      <p className="-mt-1 mb-5 text-caption text-ink-faint">Last updated {POLICY_UPDATED}</p>
+
+      <div className="space-y-5 text-body text-ink-soft">
         <p>
-          We store a display name, the lists you share with your group, and a record of who added or
-          bought what. That history is shared with everyone in your group. If you’ve added an email to
-          back up your list, we use it only to sign you back in.
+          Trolley is a free, shared shopping list for households. This explains what we hold, why,
+          where it lives, and how to get rid of it. We collect as little as possible and never sell it
+          or use it for advertising.
         </p>
-        <p>
-          Reporting is off by default. If you turn it on, it counts who bought what — handy, but it
-          profiles everyone in the household, so it stays opt-in and you can clear it whenever.
-        </p>
+
+        <Section title="What we store">
+          <ul className="ml-4 list-disc space-y-1.5">
+            <li>A <strong>display name</strong> you choose for each group.</li>
+            <li>The <strong>list items</strong> you share, and a record of <strong>who added or bought what</strong> — shared with everyone in that group.</li>
+            <li>An <strong>email</strong>, only if you add one to back up your list across devices. It’s used solely to sign you back in.</li>
+            <li>A <strong>push subscription</strong>, only if you turn notifications on, so we can tell your group when the list changes.</li>
+          </ul>
+          <p className="mt-2">
+            You don’t need an account to start — opening the app signs you in anonymously, with no
+            email or password.
+          </p>
+        </Section>
+
+        <Section title="Children">
+          <p>
+            A household list may name or be used by children. The only personal data involved is a
+            display name someone chooses, which can be cleared or deleted at any time. We don’t
+            knowingly collect anything more about a child, and there are no public profiles.
+          </p>
+        </Section>
+
+        <Section title="Reporting is opt-in">
+          <p>
+            Reporting is <strong>off by default</strong>. If you turn it on it counts who bought what —
+            handy, but it profiles everyone in the household, so it stays opt-in and you can clear it
+            whenever.
+          </p>
+        </Section>
+
+        <Section title="Where your data lives">
+          <p>
+            Data is stored in the <strong>EU/UK</strong> with our database provider,{' '}
+            <strong>Supabase</strong> (database, sign-in and real-time sync). The app itself is served
+            by <strong>Vercel</strong>. If you enable notifications, the message is delivered through
+            your browser’s push service (e.g. Google, Apple or Mozilla). We don’t use analytics or
+            advertising trackers.
+          </p>
+        </Section>
+
+        <Section title="How long we keep it">
+          <p>
+            We keep your data until you remove it. Deleting your account, leaving a group, clearing
+            history or deleting a list (below) erases the relevant data. When you delete your account,
+            your past actions remain only as a snapshot name (“Mum binned this”) so the group’s history
+            still reads sensibly, while your login is removed.
+          </p>
+        </Section>
+
+        <Section title="Your rights">
+          <p>
+            You can access, correct, export or delete your data, and object to how it’s used. Most of
+            this is one tap away below. As we’re UK/EU-based, you also have the right to complain to the{' '}
+            <a className="font-semibold text-brand underline" href="https://ico.org.uk/make-a-complaint/" target="_blank" rel="noreferrer">ICO</a>.
+            For anything not covered by the controls below, email{' '}
+            <a className="font-semibold text-brand underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+          </p>
+        </Section>
+
         <p>You’re always in control — leave a group, delete your account, or wipe your history whenever you like.</p>
       </div>
 
@@ -93,6 +157,15 @@ export function Privacy() {
         />
       )}
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-1.5">
+      <h2 className="font-display text-display-s text-ink">{title}</h2>
+      {children}
+    </section>
   );
 }
 

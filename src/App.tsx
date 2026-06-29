@@ -40,7 +40,14 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <OfflineBanner />
-        {gate ?? (
+        {gate ? (
+          // Even before sign-in, keep the privacy policy reachable so people can
+          // read it before deciding to join; everything else shows the gate.
+          <Routes>
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="*" element={gate} />
+          </Routes>
+        ) : (
           <Routes>
             <Route path="/welcome" element={<Welcome />} />
             <Route path="/" element={<Landing />} />
