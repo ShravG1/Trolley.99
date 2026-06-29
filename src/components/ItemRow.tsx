@@ -91,9 +91,12 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
     if (Math.abs(delta) > 8) suppressClick.current = true; // it was a swipe, not a tap
 
     if (!revealed) {
-      // Closed: right → bought; left far enough → reveal the Delete button (step 1).
-      if (delta > SWIPE_RIGHT && !done) onBought(item.id);
-      else if (-delta >= REVEAL_TRIGGER) setRevealed(true);
+      // Closed: right → toggle bought ⇄ pending (swipe again un-buys); left far
+      // enough → reveal the Delete button (step 1).
+      if (delta > SWIPE_RIGHT) {
+        if (done) onUndo(item.id);
+        else onBought(item.id);
+      } else if (-delta >= REVEAL_TRIGGER) setRevealed(true);
     } else {
       // Open: left again → delete (step 2); right → dismiss; small → stay open.
       if (-delta >= REVEAL_TRIGGER) onDelete(item.id);
@@ -150,7 +153,7 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
       {(dx !== 0 || revealed) && (
         <div className="absolute inset-0 flex items-stretch justify-between">
           <span className="flex items-center gap-2 px-5 font-semibold" style={{ color: 'var(--brand)' }} aria-hidden="true">
-            <BoughtIcon /> Bought
+            <BoughtIcon /> {done ? 'Undo' : 'Bought'}
           </span>
           <button
             type="button"
