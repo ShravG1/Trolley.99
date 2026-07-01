@@ -111,7 +111,7 @@ export function InstallPrompt() {
 }
 
 // Small iOS share glyph (square with an up-arrow) shown inline in the steps.
-function ShareGlyph() {
+export function ShareGlyph() {
   return (
     <svg
       width="16"

@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { signInWithMagicLink, isSupabaseConfigured } from '@/lib/supabase';
+import { isInstalledPWA, isIOS } from '@/lib/push';
+import { ShareGlyph } from '@/components/InstallPrompt';
 
 // First run (§2.1) — single email field → magic link. No passwords.
 // Email enumeration: the confirmation looks identical whether or not the email
@@ -10,6 +12,16 @@ export function Welcome() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Trolley isn't on the App Store — most people don't know they can add it to
+  // their phone. Surface the how-to up front, but only to browser visitors who
+  // haven't installed yet (it vanishes once running as a home-screen PWA).
+  const [showInstall, setShowInstall] = useState(false);
+  const [ios, setIos] = useState(false);
+
+  useEffect(() => {
+    setShowInstall(!isInstalledPWA());
+    setIos(isIOS());
+  }, []);
 
   async function send() {
     if (!email.trim()) return;
@@ -29,6 +41,7 @@ export function Welcome() {
       <div className="pt-16">
         <h1 className="font-display text-[40px] font-bold leading-[1.05] text-ink">Trolley</h1>
         <p className="mt-3 text-display-s text-ink-soft">One list. Everyone shops. Sorted.</p>
+        {showInstall && <AddToHomeScreenHint ios={ios} />}
       </div>
 
       {sent ? (
@@ -79,6 +92,41 @@ export function Welcome() {
         </Link>
         .
       </p>
+    </div>
+  );
+}
+
+// Add-to-Home-Screen how-to, shown at the very top of first load. Trolley isn't
+// on the App Store, so people install it themselves from the browser — spell it
+// out. iOS/Safari has no install event, so we give the manual Share steps;
+// Android/Chromium gets the generic wording (its own prompt handles the tap).
+function AddToHomeScreenHint({ ios }: { ios: boolean }) {
+  return (
+    <div className="mt-5 rounded-lg bg-brand-tint p-4">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md bg-surface text-[18px] shadow-e1"
+        >
+          📲
+        </span>
+        <div className="min-w-0">
+          <p className="text-item font-semibold text-ink">Add Trolley to your Home Screen</p>
+          {ios ? (
+            <p className="mt-1 text-meta text-ink-soft">
+              It's not on the App Store — you add it yourself. In Safari, tap the Share button{' '}
+              <ShareGlyph /> then <b>“Add to Home Screen”</b>. It opens full-screen like a real app,
+              and lets you switch on notifications for urgent items.
+            </p>
+          ) : (
+            <p className="mt-1 text-meta text-ink-soft">
+              It's not on the App Store — add it from your browser menu (<b>“Add to Home Screen”</b> or{' '}
+              <b>“Install”</b>). It opens full-screen like a real app, and lets you switch on
+              notifications for urgent items.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
