@@ -48,17 +48,21 @@ function isClosing(err: unknown): boolean {
 }
 
 // `onClosing` is invoked when the live handle is no longer usable, so the caller
-// can clear its cached open and reopen on the next access.
-function idbStore(db: IDBDatabase, onClosing: () => void): OpStore {
-  function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+// can clear its cached open and reopen on the next access. `reopen` yields a fresh
+// connection, letting a single op transparently recover from a closed handle
+// instead of surfacing the error to the caller.
+function idbStore(initialDb: IDBDatabase, onClosing: () => void, reopen: () => Promise<IDBDatabase>): OpStore {
+  let db = initialDb;
+
+  // One attempt against the current handle. A synchronous throw (connection
+  // closing) or an async request error both reject here rather than escaping the
+  // executor as an unhandled rejection.
+  function attempt<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       let req: IDBRequest<T>;
       try {
         req = op(db.transaction(STORE, mode).objectStore(STORE));
       } catch (err) {
-        // A synchronous throw here (e.g. the connection is closing) must reject
-        // cleanly rather than escape this executor as an unhandled rejection.
-        if (isClosing(err)) onClosing();
         reject(err);
         return;
       }
@@ -66,6 +70,23 @@ function idbStore(db: IDBDatabase, onClosing: () => void): OpStore {
       req.onerror = () => reject(req.error);
     });
   }
+
+  // Safari force-closes idle connections, so the first op after a backgrounding
+  // fails with InvalidStateError. Rather than reject into the fire-and-forget
+  // write path — which then surfaces as an unhandled rejection (issue #20) — we
+  // drop the dead handle, reopen once, and retry the same op on the fresh
+  // connection. A second failure (or any non-closing error) propagates normally.
+  function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+    return attempt(mode, op).catch((err) => {
+      if (!isClosing(err)) throw err;
+      onClosing();
+      return reopen().then((fresh) => {
+        db = fresh;
+        return attempt(mode, op);
+      });
+    });
+  }
+
   return {
     getAll: () => run('readonly', (s) => s.getAll() as IDBRequest<QueuedOp[]>),
     put: (op) => run('readwrite', (s) => s.put(op)).then(() => undefined),
@@ -85,17 +106,22 @@ export function createOpStore(): OpStore {
   };
   const store = () =>
     (ready ??= openDb()
-      .then((db) => idbStore(db, reset))
+      .then((db) => idbStore(db, reset, openDb))
       .catch(() => createMemoryStore()));
+  // Any op that still rejects after the reopen-and-retry (e.g. IDB is genuinely
+  // unusable) must not escape as an unhandled rejection: drop the cached store
+  // and re-run the op against a fresh one, which falls back to memory on failure.
+  async function withRetry<T>(pick: (s: OpStore) => Promise<T>): Promise<T> {
+    try {
+      return await pick(await store());
+    } catch {
+      reset();
+      return pick(await store());
+    }
+  }
   return {
-    async getAll() {
-      return (await store()).getAll();
-    },
-    async put(op) {
-      return (await store()).put(op);
-    },
-    async delete(opId) {
-      return (await store()).delete(opId);
-    },
+    getAll: () => withRetry((s) => s.getAll()),
+    put: (op) => withRetry((s) => s.put(op)),
+    delete: (opId) => withRetry((s) => s.delete(opId)),
   };
 }
