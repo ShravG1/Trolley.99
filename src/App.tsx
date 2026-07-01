@@ -36,6 +36,10 @@ export default function App() {
     gate = <GroupSetup onDone={sync.refresh} />;
   }
 
+  // Welcome carries its own Add-to-Home-Screen hint up top, so don't also pop
+  // the bottom-sheet InstallPrompt over the sign-in screen — that's the same ask twice.
+  const signedOut = sync.status === 'signed-out';
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
@@ -78,7 +82,7 @@ export default function App() {
         <Toasts />
         <Onboarding />
         <PushNudge />
-        <InstallPrompt />
+        {!signedOut && <InstallPrompt />}
         <UpdatePrompt />
       </BrowserRouter>
     </ErrorBoundary>
