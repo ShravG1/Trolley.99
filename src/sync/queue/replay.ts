@@ -62,6 +62,14 @@ export function createReplayEngine(deps: ReplayDeps): ReplayEngine {
   let inFlight: string | null = null;
   let backoffMs = BASE_BACKOFF_MS;
   let backoffHandle: unknown = null;
+  // Serialises enqueue()'s read-modify-write. Two enqueues for the same item
+  // (e.g. mashing the qty stepper) are both fire-and-forget from the caller, so
+  // without this their db.getAll() reads can interleave before either writes —
+  // each sees the queue as it was before the other's op landed, so they coalesce
+  // against a stale view and both get persisted instead of merging into one.
+  // Chaining onto the previous enqueue's promise keeps each one atomic relative
+  // to the others while still coalescing correctly.
+  let enqueueChain: Promise<void> = Promise.resolve();
 
   async function refreshPending() {
     const all = await db.getAll();
@@ -73,12 +81,19 @@ export function createReplayEngine(deps: ReplayDeps): ReplayEngine {
   }
 
   async function enqueue(op: QueuedOp) {
-    const existing = (await db.getAll()).filter((o) => o.itemId === op.itemId);
-    const plan = planCoalesce(existing, op, inFlight);
-    for (const id of plan.delete) await db.delete(id);
-    for (const p of plan.put) await db.put(p);
-    await refreshPending();
-    void drain(); // single-flight; probes connectivity first
+    const run = async () => {
+      const existing = (await db.getAll()).filter((o) => o.itemId === op.itemId);
+      const plan = planCoalesce(existing, op, inFlight);
+      for (const id of plan.delete) await db.delete(id);
+      for (const p of plan.put) await db.put(p);
+      await refreshPending();
+      void drain(); // single-flight; probes connectivity first
+    };
+    // Chain onto the tail regardless of whether the previous link failed, so one
+    // rejected enqueue can't wedge every enqueue after it.
+    const next = enqueueChain.then(run, run);
+    enqueueChain = next.catch(() => {});
+    return next;
   }
 
   function scheduleBackoff() {

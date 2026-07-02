@@ -157,4 +157,35 @@ describe('replay engine (§4)', () => {
     await engine.enqueueInsert(item('i2'), 'g', 't1');
     expect(pending.at(-1)!.sort()).toEqual(['i1', 'i2']);
   });
+
+  it('two concurrent (fire-and-forget) enqueues for the SAME item still coalesce to one op', async () => {
+    // Mirrors useSupabaseSync's queuedItemWrites, which calls engine.enqueueX()
+    // without awaiting — e.g. mashing the qty stepper fires two enqueuePatch
+    // calls back-to-back in the same tick, before either's read of the queue
+    // has resolved. Without serialising the read-modify-write, both see the
+    // queue as empty of this item and both persist, breaking the "at most one
+    // unlocked op per item" invariant (and risking an unordered patch/insert
+    // race on replay).
+    const db = createMemoryStore();
+    const engine = makeEngine(db, fakeInner(() => ({ ok: true }), []), { probe: async () => false });
+    const p1 = engine.enqueueInsert(item('i1'), 'g', 't1');
+    const p2 = engine.enqueuePatch('i1', { quantity: 7 }, 'g', 't1');
+    await Promise.all([p1, p2]);
+    const all = await db.getAll();
+    expect(all).toHaveLength(1);
+    expect(all[0].kind).toBe('insert');
+    expect((all[0].payload as Item).quantity).toBe(7);
+  });
+
+  it('a burst of concurrent patches for the same item collapses to one last-write-wins op', async () => {
+    const db = createMemoryStore();
+    await db.put(op({ opId: 'seed', kind: 'insert', itemId: 'i1', createdAt: 0 }));
+    const engine = makeEngine(db, fakeInner(() => ({ ok: true }), []), { probe: async () => false });
+    // Mashing the + button: several patches for the same item, none awaited.
+    const writes = [1, 2, 3, 4, 5].map((q) => engine.enqueuePatch('i1', { quantity: q }, 'g', 't1'));
+    await Promise.all(writes);
+    const all = await db.getAll();
+    expect(all).toHaveLength(1);
+    expect((all[0].payload as Item).quantity).toBe(5); // last write wins
+  });
 });
