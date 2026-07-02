@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { serverNow } from '@/lib/serverTime';
 
 interface Props {
   /** ISO timestamp the window closes at (server-authoritative — §6.5). */
@@ -25,7 +26,11 @@ export function CountdownBar({ until, onClose }: Props) {
     return () => clearInterval(id);
   }, []);
 
-  const remaining = end - Date.now();
+  // Judge the countdown against server time, not the device clock (§6.5) — a
+  // skewed phone would otherwise show the wrong time left and fire onClose at
+  // the wrong moment relative to the server-enforced window (mirrors the
+  // windowOpen check in Home.tsx).
+  const remaining = end - serverNow();
   const totalWindow = 15 * 60_000; // visual baseline; pct clamps anyway
   const pct = Math.max(0, Math.min(100, (remaining / totalWindow) * 100));
   const closing = remaining <= 60_000;
