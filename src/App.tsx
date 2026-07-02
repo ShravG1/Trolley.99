@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Home } from '@/screens/Home';
 import { Lists } from '@/screens/Lists';
@@ -27,10 +28,10 @@ export default function App() {
   const sync = useSupabaseSync();
 
   // Auth gate (§2.1). In demo mode (no Supabase env) we skip straight to the app.
+  // 'loading' is handled separately below (it's the splash, with its own exit
+  // choreography); gate covers the two static pre-app screens.
   let gate: React.ReactNode = null;
-  if (sync.status === 'loading') {
-    gate = <Splash />;
-  } else if (sync.status === 'signed-out') {
+  if (sync.status === 'signed-out') {
     gate = <Welcome />;
   } else if (sync.status === 'needs-group') {
     gate = <GroupSetup onDone={sync.refresh} />;
@@ -44,15 +45,34 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <OfflineBanner />
-        {gate ? (
+        {/* AnimatePresence sits ABOVE the splash/gate/app switch so the splash's
+            exit runs on every handoff out of 'loading' — including the primary
+            loading→ready path where the gate disappears entirely. mode="wait":
+            the splash fades/scales out fully before the next screen mounts.
+            Welcome/GroupSetup are static screens, not transients, so only the
+            splash carries exit choreography. */}
+        <AnimatePresence mode="wait">
+        {sync.status === 'loading' ? (
+          <motion.div
+            key="splash"
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.32, ease: [0.45, 0, 0.2, 1] }}
+          >
+            {/* Even mid-load, keep the privacy policy reachable (§ sign-up). */}
+            <Routes>
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="*" element={<Splash />} />
+            </Routes>
+          </motion.div>
+        ) : gate ? (
           // Even before sign-in, keep the privacy policy reachable so people can
           // read it before deciding to join; everything else shows the gate.
-          <Routes>
+          <Routes key="gate">
             <Route path="/privacy" element={<Privacy />} />
             <Route path="*" element={gate} />
           </Routes>
         ) : (
-          <Routes>
+          <Routes key="app">
             <Route path="/welcome" element={<Welcome />} />
             <Route path="/" element={<Landing />} />
             <Route path="/lists" element={<Lists />} />
@@ -79,6 +99,7 @@ export default function App() {
             <Route path="*" element={<Home />} />
           </Routes>
         )}
+        </AnimatePresence>
         <Toasts />
         <Onboarding />
         <PushNudge />
@@ -91,9 +112,14 @@ export default function App() {
 
 function Splash() {
   return (
-    <div className="grid min-h-dvh place-items-center">
+    <motion.div
+      className="grid min-h-dvh place-items-center"
+      initial={{ opacity: 0, scale: 1.02 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}
+    >
       <CartLoader caption="Trolley…" />
-    </div>
+    </motion.div>
   );
 }
 
