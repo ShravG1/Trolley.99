@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(28);
+select plan(30);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -142,6 +142,19 @@ select lives_ok($$ select join_group('LIVE1234', 'Ben') $$, 'valid live code let
 select is(
   (select count(*) from groups where id = :'gid_a')::int, 1,
   'after joining, B can read A''s group');
+
+-- --- invites_delete: any member may revoke, not just the creator (#37) ----
+-- B is now a member of A but did NOT create these invites (A did). The revoke
+-- policy is member-gated by design, so B can kill A's invite — this locks in
+-- the intent the 0001 comment used to contradict (any-member-revoke, not
+-- creator-only).
+select lives_ok(
+  $$ delete from invites where code = 'DEAD1234' $$,
+  'a non-creator member can revoke an invite in their group (#37)');
+
+select is(
+  (select count(*) from invites where code = 'DEAD1234')::int, 0,
+  'the revoked invite is actually gone (#37)');
 
 -- --- complete_trip rollover preserves note + unit (#11) ------------------
 -- A un-ticked item with a note + unit must carry both fields into the fresh
