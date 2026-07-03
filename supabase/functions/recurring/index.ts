@@ -12,6 +12,7 @@
 // must therefore be careful to scope every write by group_id.
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { timingSafeEqual } from '../_shared/timing-safe.ts';
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -43,7 +44,10 @@ function dueToday(rule: string, lastAdded: string | null): boolean {
 Deno.serve(async (req) => {
   // verify_jwt=false; gated by the shared cron secret so the public anon JWT
   // can't trigger a fan-out of recurring items (§5.4). Scheduler sends it.
-  if (!CRON_SECRET || req.headers.get('x-cron-secret') !== CRON_SECRET) {
+  // Constant-time compare so the secret can't be recovered via a timing
+  // side-channel (#36); still fails closed when the secret is unset.
+  const presented = req.headers.get('x-cron-secret') ?? '';
+  if (!CRON_SECRET || !(await timingSafeEqual(presented, CRON_SECRET))) {
     return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
