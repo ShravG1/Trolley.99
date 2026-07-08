@@ -15,6 +15,9 @@ const POLICY_UPDATED = '29 June 2026';
 // and, for people deciding whether to sign up, from the public Welcome screen.
 export function Privacy() {
   const groupId = useStore((s) => s.trip.group_id);
+  // Name the list on the leave/delete controls so it's unambiguous which one
+  // you're acting on when you're in more than one (these act on the active list).
+  const listName = useStore((s) => s.groups.find((g) => g.group_id === s.trip.group_id)?.name ?? null);
   const pushToast = useStore((s) => s.pushToast);
   const [confirm, setConfirm] = useState<null | 'clear' | 'leave' | 'deleteList' | 'delete'>(null);
   const [busy, setBusy] = useState(false);
@@ -135,12 +138,16 @@ export function Privacy() {
       <div className="mt-6 space-y-2">
         <LifecycleButton label="Clear trip history" tone="neutral" onClick={() => setConfirm('clear')} />
         <LifecycleButton
-          label="Leave this group"
+          label={listName ? `Leave “${listName}”` : 'Leave this group'}
           hint="If you’re the last one out, this deletes the group for everyone."
           tone="neutral"
           onClick={() => setConfirm('leave')}
         />
-        <LifecycleButton label="Delete this list" tone="danger" onClick={() => setConfirm('deleteList')} />
+        <LifecycleButton
+          label={listName ? `Delete “${listName}”` : 'Delete this list'}
+          tone="danger"
+          onClick={() => setConfirm('deleteList')}
+        />
         <LifecycleButton label="Delete my account" tone="danger" onClick={() => setConfirm('delete')} />
       </div>
       <p className="mt-3 text-caption text-ink-faint">
@@ -151,6 +158,7 @@ export function Privacy() {
       {confirm && (
         <ConfirmSheet
           action={confirm}
+          listName={listName}
           busy={busy}
           onCancel={() => setConfirm(null)}
           onConfirm={() => run(confirm)}
@@ -171,20 +179,23 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function ConfirmSheet({
   action,
+  listName,
   busy,
   onCancel,
   onConfirm,
 }: {
   action: 'clear' | 'leave' | 'deleteList' | 'delete';
+  listName: string | null;
   busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const named = listName ? `“${listName}”` : null;
   const copy = {
     clear: { title: 'Clear trip history?', body: 'Deletes all completed trips for this group. The current list stays.', cta: 'Clear history' },
-    leave: { title: 'Leave this group?', body: 'You’ll lose access to the shared list. If you’re the last one out, the group is deleted.', cta: 'Leave group' },
+    leave: { title: named ? `Leave ${named}?` : 'Leave this group?', body: 'You’ll lose access to the shared list. If you’re the last one out, the group is deleted.', cta: 'Leave group' },
     deleteList: {
-      title: 'Delete this list for everyone?',
+      title: named ? `Delete ${named} for everyone?` : 'Delete this list for everyone?',
       body: 'Permanently deletes this list — every item and all its history — for everyone in the group. This can’t be undone. (Only the list’s creator can do this.)',
       cta: 'Delete list',
     },
