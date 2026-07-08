@@ -45,7 +45,7 @@ export function StartShoppingSheet({ open, onClose }: Props) {
       }
     });
     if (silent) {
-      pushToast('Shopping quietly — no one’s been pinged.');
+      pushToast('Silent run — no one’s been pinged.');
       return;
     }
     // Solo group: notifying "everyone else" is a no-op — don't crash (§12).
@@ -84,7 +84,7 @@ export function StartShoppingSheet({ open, onClose }: Props) {
       >
         Start shopping
       </button>
-      {/* Silent shop — slip off without pinging anyone. Locks the list right away
+      {/* Silent run — slip off without pinging anyone. Locks the list right away
           and skips the group push; only worth offering when there's someone to
           not-ping in the first place. */}
       {others > 0 && (
@@ -92,7 +92,7 @@ export function StartShoppingSheet({ open, onClose }: Props) {
           onClick={() => go(null, true)}
           className="mt-2 min-h-11 w-full rounded-pill px-6 text-meta font-semibold text-ink-soft underline decoration-line underline-offset-4"
         >
-          Slip off quietly — don’t ping anyone
+          Silent run — don’t ping anyone
         </button>
       )}
     </BottomSheet>

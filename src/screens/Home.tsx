@@ -25,6 +25,7 @@ import { CountdownBar } from '@/components/CountdownBar';
 import { ModeBanner } from '@/components/ModeBanner';
 import { BottomSheet } from '@/components/BottomSheet';
 import { PresenceLine } from '@/components/PresenceLine';
+import { WatchedBanner } from '@/components/WatchedBanner';
 import { EmptyState } from '@/components/EmptyState';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { PlusIcon, GearIcon, BinIcon, ChevronDownIcon } from '@/components/icons';
@@ -39,6 +40,7 @@ export function Home() {
   const userId = useStore((s) => s.userId);
   const members = useStore((s) => s.members);
   const viewers = useStore((s) => s.viewers);
+  const silentRun = useStore((s) => s.silentRun);
   const groups = useStore((s) => s.groups);
   const activeGroupId = useStore((s) => s.activeGroupId);
   const switching = useStore((s) => s.switching);
@@ -217,8 +219,14 @@ export function Home() {
       {/* Shop tabs (#19) — switch between shops; each runs its own trip. */}
       <ShopTabs />
 
-      {/* Live "who's looking" in every mode — incl. the shopper, who sees who's watching. */}
-      <PresenceLine names={watching} />
+      {/* Live "who's looking" in every mode — incl. the shopper, who sees who's
+          watching. On a silent run, being watched defeats the point of slipping
+          off quietly, so flag it hard with eyes instead of the subtle line (§2.6). */}
+      {mode === 'shopping' && silentRun && watching.length > 0 ? (
+        <WatchedBanner names={watching} />
+      ) : (
+        <PresenceLine names={watching} />
+      )}
 
       {/* Overall progress in shop modes */}
       {mode !== 'list' && (

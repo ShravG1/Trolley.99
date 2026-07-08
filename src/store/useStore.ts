@@ -68,6 +68,10 @@ interface StoreState {
   /** Live viewers (user ids) on the active group's presence channel (§6.4). */
   viewers: string[];
   setViewers: (ids: string[]) => void;
+  /** True when the active trip was started as a silent run (no group push). You
+   *  slipped off without a ping, so if anyone's watching the list we flag it hard
+   *  ("👀 …'s watching your shop"). Local only; clears on finish/cancel/switch. */
+  silentRun: boolean;
   /** Item ids with a write still queued offline (the offline write queue,
    *  docs/OFFLINE_PLAN.md §7). Drives the "N changes will sync" indicator and
    *  keeps loadSnapshot from blinking out an as-yet-unsynced optimistic item. */
@@ -167,6 +171,7 @@ export const useStore = create<StoreState>((set, get) => ({
   pushNudge: false,
   remote: null,
   viewers: [],
+  silentRun: false,
   pendingWriteIds: [],
   groups: [],
   activeGroupId: loadActiveGroup(),
@@ -202,6 +207,7 @@ export const useStore = create<StoreState>((set, get) => ({
       items: [],
       members: [],
       viewers: [],
+      silentRun: false,
       shops: [],
       activeShopId: null,
       switching: true,
@@ -572,7 +578,8 @@ export const useStore = create<StoreState>((set, get) => ({
       started_at: now(),
     };
     // Keep allTrips in step so the tab's "being shopped" dot updates instantly.
-    set((s) => ({ trip: updated, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
+    // Remember a silent run so the UI can flag watchers ("👀 …'s watching your shop").
+    set((s) => ({ trip: updated, silentRun: silent, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
     // Remote claim is authoritative; if it loses the race the writer resyncs the
     // trip back to active and toasts "someone's already shopping" (§7.1).
     // Silent shop (§2.6): claim the trip but skip the group-wide push, so nobody
@@ -591,7 +598,8 @@ export const useStore = create<StoreState>((set, get) => ({
     // (lastminute_until = now()) — otherwise the new shopper briefly sees the
     // previous shopper's open window until reload() corrects it.
     const updated: Trip = { ...trip, shopper_id: userId, shopper_name: me?.display_name ?? 'You', lastminute_until: now(), started_at: now() };
-    set((s) => ({ trip: updated, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
+    // Taking over an existing shop isn't a silent run — clear any stale flag.
+    set((s) => ({ trip: updated, silentRun: false, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
     get().remote?.takeOverShopping(trip.id);
   },
 
@@ -599,7 +607,7 @@ export const useStore = create<StoreState>((set, get) => ({
     // Lock-release exit (§2.6): return the list to everyone.
     const { trip } = get();
     const updated: Trip = { ...trip, status: 'active', shopper_id: null, shopper_name: null, lastminute_until: null, started_at: null };
-    set((s) => ({ trip: updated, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
+    set((s) => ({ trip: updated, silentRun: false, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
     get().remote?.cancelShopping(trip.id);
   },
 
@@ -618,6 +626,7 @@ export const useStore = create<StoreState>((set, get) => ({
     // creates the fresh active trip (same shop) and rolls items with real ids, then
     // the sync layer reloads. We don't build a local trip here or its id would diverge.
     if (remote) {
+      set({ silentRun: false }); // trip's over — drop the silent-run flag
       remote.completeTrip(trip.id);
       get().pushToast(`Trip done. ${bought} bought, ${rolled} rolled over.`);
       return;
@@ -649,6 +658,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
     set({
       trip: newTrip,
+      silentRun: false,
       allTrips: allTrips.map((t) => (t.id === trip.id ? newTrip : t)),
       items: [...others, ...rolledItems],
     });
