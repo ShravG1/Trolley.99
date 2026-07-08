@@ -530,7 +530,7 @@ function installWriter(reload: () => Promise<void>) {
   const writer: RemoteWriter = {
     ...itemWrites,
 
-    startShopping(tripId, minutes) {
+    startShopping(tripId, minutes, silent = false) {
       void (async () => {
         const { data, error } = await sb.rpc('start_shopping', {
           p_trip_id: tripId,
@@ -542,6 +542,9 @@ function installWriter(reload: () => Promise<void>) {
           await reload();
           return;
         }
+        // Silent shop (§2.6): claimed the trip, but hold the push — nobody's phone
+        // buzzes. Realtime still updates anyone with the app open.
+        if (silent) return;
         // Tell the group someone's gone shopping (§2.6, §2.10).
         const me = useStore.getState();
         const name = me.members.find((m) => m.user_id === me.userId)?.display_name ?? 'Someone';

@@ -11,7 +11,7 @@ import type { Item } from '@/types/models';
 export interface RemoteWriter {
   insertItem(item: Item): void;
   patchItem(id: string, patch: Partial<Item>): void;
-  startShopping(tripId: string, minutes: number | null): void;
+  startShopping(tripId: string, minutes: number | null, silent?: boolean): void;
   cancelShopping(tripId: string): void;
   completeTrip(tripId: string): void;
   takeOverShopping(tripId: string): void;

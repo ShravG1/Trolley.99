@@ -50,6 +50,33 @@ describe('shopper-claim race (§7.1)', () => {
     const until = useStore.getState().trip.lastminute_until!;
     expect(new Date(until).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
   });
+
+  it('silent run still claims the trip, sets the flag, and relays silent=true so no push fires', () => {
+    const calls: Array<{ minutes: number | null; silent?: boolean }> = [];
+    // Minimal remote stub — we only care that startShopping relays silent=true.
+    useStore.setState({
+      remote: {
+        startShopping: (_tripId: string, minutes: number | null, silent?: boolean) =>
+          calls.push({ minutes, silent }),
+      } as never,
+    });
+    const ok = useStore.getState().startShopping(10, true);
+    expect(ok).toBe(true);
+    expect(useStore.getState().trip.status).toBe('shopping');
+    expect(useStore.getState().silentRun).toBe(true);
+    expect(calls).toEqual([{ minutes: 10, silent: true }]);
+  });
+
+  it('a normal shop leaves silentRun false; cancelling clears a silent run', () => {
+    useStore.getState().startShopping(10); // normal — no silent arg
+    expect(useStore.getState().silentRun).toBe(false);
+
+    useStore.setState({ trip: { ...seedTrip }, silentRun: false });
+    useStore.getState().startShopping(null, true);
+    expect(useStore.getState().silentRun).toBe(true);
+    useStore.getState().cancelShopping();
+    expect(useStore.getState().silentRun).toBe(false);
+  });
 });
 
 describe('finishTrip rollover (§7.4)', () => {
