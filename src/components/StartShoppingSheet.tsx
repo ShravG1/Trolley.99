@@ -9,16 +9,15 @@ interface Props {
   onClose: () => void;
 }
 
-const CHOICES: Array<{ label: string; minutes: number | null }> = [
+const CHOICES: Array<{ label: string; minutes: number }> = [
   { label: '5 min', minutes: 5 },
   { label: '10 min', minutes: 10 },
   { label: '15 min', minutes: 15 },
   { label: '20 min', minutes: 20 },
-  { label: 'Off', minutes: null },
 ];
 
 // Window picker (§2.6) — the shopper chooses the last-minute window before the
-// mode-shift fires. "Off" locks immediately.
+// mode-shift fires. To lock immediately without a ping, go on a silent run.
 export function StartShoppingSheet({ open, onClose }: Props) {
   const startShopping = useStore((s) => s.startShopping);
   const pushToast = useStore((s) => s.pushToast);
@@ -33,10 +32,10 @@ export function StartShoppingSheet({ open, onClose }: Props) {
   // surprise which one is starting (#19). Null shop = the default "General" list.
   const shopName = shops.length > 0 ? (shops.find((s) => s.id === activeShopId)?.name ?? DEFAULT_SHOP_LABEL) : null;
 
-  function go(minutes: number | null, silent = false) {
+  function go(minutes: number, silent = false) {
     onClose();
     withViewTransition(() => {
-      // A silent shop locks the list right away — no window, since nobody's being
+      // A silent run locks the list right away — no window, since nobody's being
       // pinged to add anything last-minute.
       const ok = startShopping(silent ? null : minutes, silent);
       if (!ok) {
@@ -50,8 +49,7 @@ export function StartShoppingSheet({ open, onClose }: Props) {
     }
     // Solo group: notifying "everyone else" is a no-op — don't crash (§12).
     if (others > 0) {
-      const mins = minutes ?? 0;
-      pushToast(`You’re shopping. ${mins} min to add anything last-minute.`);
+      pushToast(`You’re shopping. ${minutes} min to add anything last-minute.`);
     }
   }
 
@@ -69,9 +67,9 @@ export function StartShoppingSheet({ open, onClose }: Props) {
         {CHOICES.map((c) => (
           <button
             key={c.label}
-            onClick={() => setSelected(c.minutes ?? -1)}
+            onClick={() => setSelected(c.minutes)}
             className={`min-h-11 rounded-pill border px-4 text-meta font-semibold ${
-              (c.minutes ?? -1) === selected ? 'border-transparent bg-brand text-on-brand' : 'border-line text-ink'
+              c.minutes === selected ? 'border-transparent bg-brand text-on-brand' : 'border-line text-ink'
             }`}
           >
             {c.label}
@@ -79,19 +77,21 @@ export function StartShoppingSheet({ open, onClose }: Props) {
         ))}
       </div>
       <button
-        onClick={() => go(selected === -1 ? null : selected)}
+        onClick={() => go(selected)}
         className="mt-5 min-h-13 w-full rounded-pill bg-brand px-6 text-item font-semibold text-on-brand shadow-e2"
       >
         Start shopping
       </button>
       {/* Silent run — slip off without pinging anyone. Locks the list right away
           and skips the group push; only worth offering when there's someone to
-          not-ping in the first place. */}
+          not-ping in the first place. The hushed twilight-lilac fill sets it apart
+          from the loud green primary — quiet by look as well as by function. */}
       {others > 0 && (
         <button
-          onClick={() => go(null, true)}
-          className="mt-2 min-h-11 w-full rounded-pill px-6 text-meta font-semibold text-ink-soft underline decoration-line underline-offset-4"
+          onClick={() => go(0, true)}
+          className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-pill bg-sub-tint px-6 text-meta font-semibold text-sub"
         >
+          <span aria-hidden="true" className="leading-none">🌙</span>
           Silent run — don’t ping anyone
         </button>
       )}
