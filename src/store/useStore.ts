@@ -136,7 +136,7 @@ interface StoreState {
   restoreItem: (id: string) => void;
 
   // trip lifecycle
-  startShopping: (windowMinutes: number | null) => boolean;
+  startShopping: (windowMinutes: number | null, silent?: boolean) => boolean;
   cancelShopping: () => void;
   finishTrip: () => void;
   takeOverShopping: () => void;
@@ -553,7 +553,7 @@ export const useStore = create<StoreState>((set, get) => ({
     get().remote?.patchItem(id, patch);
   },
 
-  startShopping(windowMinutes) {
+  startShopping(windowMinutes, silent = false) {
     const { trip, userId, members } = get();
     // SERVER: atomic `update trips set status='shopping' ... where status='active'`
     // — first-writer-wins; 0 rows back => someone beat you (§7.1).
@@ -575,7 +575,9 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({ trip: updated, allTrips: s.allTrips.map((t) => (t.id === updated.id ? updated : t)) }));
     // Remote claim is authoritative; if it loses the race the writer resyncs the
     // trip back to active and toasts "someone's already shopping" (§7.1).
-    get().remote?.startShopping(trip.id, windowMinutes);
+    // Silent shop (§2.6): claim the trip but skip the group-wide push, so nobody
+    // gets pinged. The live ModeBanner still shows to anyone already watching.
+    get().remote?.startShopping(trip.id, windowMinutes, silent);
     return true;
   },
 

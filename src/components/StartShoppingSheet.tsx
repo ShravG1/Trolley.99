@@ -33,15 +33,21 @@ export function StartShoppingSheet({ open, onClose }: Props) {
   // surprise which one is starting (#19). Null shop = the default "General" list.
   const shopName = shops.length > 0 ? (shops.find((s) => s.id === activeShopId)?.name ?? DEFAULT_SHOP_LABEL) : null;
 
-  function go(minutes: number | null) {
+  function go(minutes: number | null, silent = false) {
     onClose();
     withViewTransition(() => {
-      const ok = startShopping(minutes);
+      // A silent shop locks the list right away — no window, since nobody's being
+      // pinged to add anything last-minute.
+      const ok = startShopping(silent ? null : minutes, silent);
       if (!ok) {
         pushToast('Someone’s already shopping.');
         return;
       }
     });
+    if (silent) {
+      pushToast('Shopping quietly — no one’s been pinged.');
+      return;
+    }
     // Solo group: notifying "everyone else" is a no-op — don't crash (§12).
     if (others > 0) {
       const mins = minutes ?? 0;
@@ -78,6 +84,17 @@ export function StartShoppingSheet({ open, onClose }: Props) {
       >
         Start shopping
       </button>
+      {/* Silent shop — slip off without pinging anyone. Locks the list right away
+          and skips the group push; only worth offering when there's someone to
+          not-ping in the first place. */}
+      {others > 0 && (
+        <button
+          onClick={() => go(null, true)}
+          className="mt-2 min-h-11 w-full rounded-pill px-6 text-meta font-semibold text-ink-soft underline decoration-line underline-offset-4"
+        >
+          Slip off quietly — don’t ping anyone
+        </button>
+      )}
     </BottomSheet>
   );
 }
