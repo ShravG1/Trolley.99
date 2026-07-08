@@ -19,6 +19,20 @@ export function canAddItem(trip: Trip, userId: string, nowMs: number): boolean {
   return nowMs <= new Date(trip.lastminute_until).getTime();
 }
 
+/**
+ * May this user mark items bought / substituted / not-found right now? Mirrors
+ * the items_update WITH CHECK (§7.2, migration 0013): the three shopping ACTIONS
+ * are permitted only while the trip is 'shopping' AND the caller is its shopper.
+ * In List mode (trip 'active') the DB rejects them, so the UI must not offer them
+ * — an optimistic tick would just be rolled back a beat later ("the list moved
+ * on"), which reads as the tick looping. Undo/restore (→ pending) is a
+ * list-management transition that stays open to any member, so it's deliberately
+ * NOT covered here.
+ */
+export function canMarkBought(trip: Trip, userId: string): boolean {
+  return trip.status === 'shopping' && trip.shopper_id === userId;
+}
+
 /** Is the last-minute window currently open for non-shoppers? */
 export function windowOpen(trip: Trip, nowMs: number): boolean {
   if (trip.status !== 'shopping' || !trip.lastminute_until) return false;

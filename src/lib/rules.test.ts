@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canAddItem, windowOpen, isShopStale, lastActivity } from './rules';
+import { canAddItem, canMarkBought, windowOpen, isShopStale, lastActivity } from './rules';
 import type { Trip } from '@/types/models';
 
 const t = (over: Partial<Trip>): Trip => ({
@@ -40,6 +40,23 @@ describe('window-close enforcement (§7.2)', () => {
     expect(windowOpen(t({ status: 'shopping', lastminute_until: future }), NOW)).toBe(true);
     expect(windowOpen(t({ status: 'shopping', lastminute_until: past }), NOW)).toBe(false);
     expect(windowOpen(t({ status: 'active' }), NOW)).toBe(false);
+  });
+});
+
+describe('mark-bought gate — mirrors items_update WITH CHECK (§7/0013)', () => {
+  it('the shopper may mark bought while shopping', () => {
+    expect(canMarkBought(t({ status: 'shopping', shopper_id: 'me' }), 'me')).toBe(true);
+  });
+
+  it('a non-shopper (spectator) may not, even mid-shop', () => {
+    expect(canMarkBought(t({ status: 'shopping', shopper_id: 'someone-else' }), 'me')).toBe(false);
+  });
+
+  it('nobody may mark bought in List mode (trip active) — the swipe-loop guard', () => {
+    // Even the eventual shopper can't tick while the trip is still active: the DB
+    // rejects it, so the UI must not offer it (else the optimistic tick loops).
+    expect(canMarkBought(t({ status: 'active', shopper_id: null }), 'me')).toBe(false);
+    expect(canMarkBought(t({ status: 'active', shopper_id: 'me' }), 'me')).toBe(false);
   });
 });
 

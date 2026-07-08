@@ -4,6 +4,7 @@ import { QtyStepper } from './QtyStepper';
 import { ShopChips } from './ShopChips';
 import { AISLES, AISLE_ORDER, aisleColor, type AisleKey } from '@/lib/aisles';
 import { useStore } from '@/store/useStore';
+import { canMarkBought } from '@/lib/rules';
 import type { Item } from '@/types/models';
 
 interface Props {
@@ -17,6 +18,12 @@ export function ItemSheet({ item, onClose }: Props) {
   const { setQuantity, setCategory, renameItem, setNote, setUnit, toggleUrgent, substitute, markNotFound, deleteItem, moveItem } = useStore();
   const shops = useStore((s) => s.shops);
   const allTrips = useStore((s) => s.allTrips);
+  const trip = useStore((s) => s.trip);
+  const userId = useStore((s) => s.userId);
+  // Substitute / Not found are shopping actions the DB only lets the active
+  // shopper make (RLS 0013). Outside Shopping mode they'd optimistically apply and
+  // then get rolled back ("the list moved on"), so don't offer them while planning.
+  const canAct = canMarkBought(trip, userId);
 
   const [subbing, setSubbing] = useState(false);
   const [subName, setSubName] = useState('');
@@ -188,21 +195,28 @@ export function ItemSheet({ item, onClose }: Props) {
           </label>
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              onClick={() => setSubbing(true)}
-              className="min-h-11 flex-1 basis-20 rounded-md border border-line py-3 text-meta font-semibold text-sub"
-            >
-              Substitute
-            </button>
-            <button
-              onClick={() => {
-                markNotFound(item.id);
-                onClose();
-              }}
-              className="min-h-11 flex-1 basis-20 rounded-md border border-line py-3 text-meta font-semibold text-ink-soft"
-            >
-              Not found
-            </button>
+            {/* Substitute / Not found only while actually shopping (§7/0013) — in
+                List mode they'd be rejected server-side. Delete stays: binning is a
+                list-management action any member may take while planning. */}
+            {canAct && (
+              <>
+                <button
+                  onClick={() => setSubbing(true)}
+                  className="min-h-11 flex-1 basis-20 rounded-md border border-line py-3 text-meta font-semibold text-sub"
+                >
+                  Substitute
+                </button>
+                <button
+                  onClick={() => {
+                    markNotFound(item.id);
+                    onClose();
+                  }}
+                  className="min-h-11 flex-1 basis-20 rounded-md border border-line py-3 text-meta font-semibold text-ink-soft"
+                >
+                  Not found
+                </button>
+              </>
+            )}
             <button
               onClick={() => {
                 deleteItem(item.id);

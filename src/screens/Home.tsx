@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { DEFAULT_SHOP_LABEL } from '@/lib/activeShop';
 import { groupForList, groupForShopping, counts } from '@/lib/grouping';
-import { isShopStale, lastActivity } from '@/lib/rules';
+import { isShopStale, lastActivity, canMarkBought } from '@/lib/rules';
 import { withViewTransition } from '@/lib/viewTransition';
 import { viewerNames } from '@/lib/presence';
 import { markEnteredList } from '@/lib/landing';
@@ -137,12 +137,26 @@ export function Home() {
     else setEditItem(item);
   };
 
+  // Marking bought is a shopping action the DB only allows the active shopper
+  // (RLS 0013). Offering it in List mode ticks optimistically, then the queued
+  // write is dropped as un-saveable and the reload rolls it back — the "swipe to
+  // buy just loops" bug. Gate the affordance to Shopping mode and nudge otherwise.
+  const canBuy = canMarkBought(trip, userId);
+  const onBuyBlocked = () => {
+    const { toasts, pushToast } = useStore.getState();
+    const msg = 'Start shopping first to tick things off.';
+    // De-dupe: repeated swipes shouldn't stack identical nudges.
+    if (!toasts.some((t) => t.message === msg)) pushToast(msg);
+  };
+
   const rowProps = {
+    canBuy,
     onBought: markBought,
     onUndo: restoreItem,
     onEdit: setEditItem,
     onMenu: openMenu,
     onDelete: deleteItem,
+    onBuyBlocked,
   };
 
   return (
@@ -353,11 +367,13 @@ function membersName(userId: string, members: { user_id: string; display_name: s
 interface BodyProps {
   items: Item[];
   readOnly?: boolean;
+  canBuy: boolean;
   onBought: (id: string) => void;
   onUndo: (id: string) => void;
   onEdit: (item: Item) => void;
   onMenu: (item: Item) => void;
   onDelete: (id: string) => void;
+  onBuyBlocked?: () => void;
 }
 
 function ListBody({ items, ...props }: BodyProps) {

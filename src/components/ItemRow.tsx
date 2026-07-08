@@ -15,11 +15,19 @@ interface Props {
   item: Item;
   density: 'list' | 'shopping';
   readOnly?: boolean;
+  /** May this user mark the item bought right now? Only true in Shopping mode —
+   *  the DB rejects a bought/substituted/not-found write otherwise (§7/0013), so
+   *  offering it in List mode just gets the optimistic tick rolled back. Undoing
+   *  an already-done item stays allowed regardless. */
+  canBuy: boolean;
   onBought: (id: string) => void;
   onUndo: (id: string) => void;
   onEdit: (item: Item) => void;
   onMenu: (item: Item) => void;
   onDelete: (id: string) => void;
+  /** Called when a bought-attempt is blocked (List mode) so the caller can nudge
+   *  ("start shopping first") instead of silently swallowing the gesture. */
+  onBuyBlocked?: () => void;
 }
 
 const SWIPE_RIGHT = 72; // swipe right past this → mark bought
@@ -32,7 +40,7 @@ const REVEAL_TRIGGER = 44; // swipe left past this → open (step 1) / confirm d
 // stays in view; tapping it — or swiping left again — confirms. A stray full
 // swipe can no longer bin an item outright. Tap the row to dismiss the reveal.
 // Memoised: with stable row callbacks, only rows whose item changed re-render.
-export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought, onUndo, onEdit, onMenu, onDelete }: Props) {
+export const ItemRow = memo(function ItemRow({ item, density, readOnly, canBuy, onBought, onUndo, onEdit, onMenu, onDelete, onBuyBlocked }: Props) {
   const [dx, setDx] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const startX = useRef<number | null>(null);
@@ -50,6 +58,18 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
 
   const minH = density === 'shopping' ? 'min-h-16' : 'min-h-14';
   const collapsed = done ? (density === 'shopping' ? 'min-h-12' : 'min-h-11') : minH;
+
+  // Bought⇄pending toggle, shared by the checkbox tap and the right-swipe so both
+  // obey the same rule. Un-ticking a done item (→ pending) is always allowed for
+  // members; marking bought is a shopping action the DB only permits for the
+  // active shopper (RLS 0013), so outside Shopping mode we nudge rather than fire
+  // a write that would be dropped and rolled back a beat later ("the list moved
+  // on") — the loop this fixes.
+  const toggleStatus = () => {
+    if (done) onUndo(item.id);
+    else if (canBuy) onBought(item.id);
+    else onBuyBlocked?.();
+  };
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (readOnly) return;
@@ -93,10 +113,8 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
     if (!revealed) {
       // Closed: right → toggle bought ⇄ pending (swipe again un-buys); left far
       // enough → reveal the Delete button (step 1).
-      if (delta > SWIPE_RIGHT) {
-        if (done) onUndo(item.id);
-        else onBought(item.id);
-      } else if (-delta >= REVEAL_TRIGGER) setRevealed(true);
+      if (delta > SWIPE_RIGHT) toggleStatus();
+      else if (-delta >= REVEAL_TRIGGER) setRevealed(true);
     } else {
       // Open: left again → delete (step 2); right → dismiss; small → stay open.
       if (-delta >= REVEAL_TRIGGER) onDelete(item.id);
@@ -153,7 +171,7 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
       {(dx !== 0 || revealed) && (
         <div className="absolute inset-0 flex items-stretch justify-between">
           <span className="flex items-center gap-2 px-5 font-semibold" style={{ color: 'var(--brand)' }} aria-hidden="true">
-            <BoughtIcon /> {done ? 'Undo' : 'Bought'}
+            <BoughtIcon /> {done ? 'Undo' : canBuy ? 'Bought' : 'Go shopping'}
           </span>
           <button
             type="button"
@@ -197,12 +215,12 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, onBought
             if (tapHandled()) return;
             if (readOnly) return;
             // Checkbox is a toggle: tick a pending item, un-tick a done one back
-            // to pending (so a mis-tick is never a dead end).
-            if (done) onUndo(item.id);
-            else onBought(item.id);
+            // to pending (so a mis-tick is never a dead end). Marking bought is
+            // gated to Shopping mode — toggleStatus nudges instead of failing.
+            toggleStatus();
           }}
           disabled={readOnly}
-          aria-label={done ? `Un-tick ${item.name}` : `Mark ${item.name} as bought`}
+          aria-label={done ? `Un-tick ${item.name}` : canBuy ? `Mark ${item.name} as bought` : `Start shopping to tick off ${item.name}`}
           className={`grid h-11 w-11 shrink-0 place-items-center rounded-pill ${readOnly ? 'opacity-60' : ''}`}
           style={{ color: iconColor }}
         >
