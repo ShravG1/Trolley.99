@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(53);
+select plan(55);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -456,6 +456,26 @@ select is(
      from invites where group_id = :'gid_a' and code not in ('LIVE1234', 'DEAD1234')),
   true,
   'minted invites are 8 unambiguous chars + a 256-bit token, expiring in 7 days (0017)');
+
+-- --- groups_delete: creator-only authorization (#49) ---------------------
+-- Ben joined Group A earlier (via LIVE1234), so he is a member-but-not-creator.
+-- The delete button is now a first-class UI control (#48); the RLS policy is the
+-- only guard. A non-creator member's DELETE must be a no-op; the creator's must
+-- succeed. This test runs last because it destroys Group A.
+
+-- Non-creator (Ben) cannot delete Group A — RLS silently no-ops the row.
+select act_as('22222222-2222-2222-2222-222222222222');
+delete from groups where id = :'gid_a';
+select is(
+  (select count(*) from groups where id = :'gid_a')::int, 1,
+  'non-creator member cannot delete the group (RLS no-op)');
+
+-- Creator (Anna) can delete her own group.
+select act_as('11111111-1111-1111-1111-111111111111');
+delete from groups where id = :'gid_a';
+select is(
+  (select count(*) from groups where id = :'gid_a')::int, 0,
+  'creator can delete their own group');
 
 select * from finish();
 rollback;
