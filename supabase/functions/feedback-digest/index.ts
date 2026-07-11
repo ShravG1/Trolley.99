@@ -10,6 +10,7 @@
 // Runs with service_role (auto-injected) to read feedback + mark it pushed.
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { timingSafeEqual } from '../_shared/timing-safe.ts';
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -22,8 +23,10 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET');
 Deno.serve(async (req) => {
   // verify_jwt=false (no end-user context); a shared cron secret is the gate so
   // the public anon JWT can't trigger the digest. The scheduler sends the same
-  // value (from Vault) in x-cron-secret (§5.4).
-  if (!CRON_SECRET || req.headers.get('x-cron-secret') !== CRON_SECRET) {
+  // value (from Vault) in x-cron-secret (§5.4). Constant-time compare so the
+  // secret can't be recovered via a timing side-channel (#36).
+  const presented = req.headers.get('x-cron-secret') ?? '';
+  if (!CRON_SECRET || !(await timingSafeEqual(presented, CRON_SECRET))) {
     return json({ ok: false, error: 'unauthorized' }, 401);
   }
   if (!PAT || !REPO) {

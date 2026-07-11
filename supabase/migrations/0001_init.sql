@@ -165,8 +165,13 @@ create policy gm_self_leave on group_members
   );
 
 -- invites ------------------------------------------------------------------
--- Members read their group's invites; only the creator of a member group can
--- mint/revoke. Joining does NOT read invites directly — join_group does.
+-- Members read their group's invites. Any member may mint an invite, but only
+-- as themselves (invites_write forces created_by = auth.uid()); and any member
+-- may revoke ANY invite in their group — revoke is member-gated, not
+-- creator-only (issue #37; asserted in rls_test.sql). The asymmetry with the
+-- self-authored mint is deliberate: a household can always kill a leaked invite
+-- link even if the member who minted it is away. Joining does NOT read invites
+-- directly — join_group does.
 create policy invites_read on invites
   for select using (is_member(group_id));
 create policy invites_write on invites
