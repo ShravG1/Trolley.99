@@ -83,17 +83,29 @@ export function describeErrorEvent(
   };
 }
 
+// Returns true when url belongs to the same origin as base — only same-origin
+// resource failures are ours to fix. Exported for unit tests.
+export function isCapturable(url: string, base: string): boolean {
+  try {
+    return new URL(url, base).origin === new URL(base).origin;
+  } catch {
+    return true; // keep if URL is unparseable
+  }
+}
+
 export function initErrorLogging(): void {
   if (typeof window === 'undefined') return;
   window.addEventListener('error', (e) => {
     // Resource-load failures (a chunk/img/font 404) arrive as an `error` event on
-    // the element, not on window — they have a `target` but no `message`. Capture
-    // them distinctly so they don't masquerade as script crashes.
+    // the element, not on window — they have a `target` but no `message`. Skip
+    // third-party resources (e.g. Vercel Live toolbar) — those aren't our bugs.
     const target = e.target as (HTMLElement & { src?: string; href?: string }) | null;
     if (target && target !== (window as unknown as EventTarget) && (target.src || target.href)) {
+      const url = target.src || target.href!;
+      if (!isCapturable(url, location.href)) return;
       void captureError(
         `Resource failed to load: ${target.tagName?.toLowerCase() ?? 'asset'}`,
-        `url: ${target.src || target.href}\n@ ${location.pathname}`
+        `url: ${url}\n@ ${location.pathname}`
       );
       return;
     }

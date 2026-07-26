@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeErrorEvent } from './errorLog';
+import { describeErrorEvent, isCapturable } from './errorLog';
 
 // Issue #30: an auto-captured "[Trolley error] Script error." with :0:0 and no
 // stack. That's the browser masking a cross-origin script error — the raw event
@@ -48,5 +48,25 @@ describe('describeErrorEvent', () => {
     );
     expect(out.message).toBe('Boom');
     expect(out.stack).toBe('https://trolley-nine.vercel.app/assets/x.js:3:9');
+  });
+});
+
+describe('isCapturable', () => {
+  const base = 'https://trolley-nine.vercel.app/shop';
+
+  it('captures same-origin absolute URLs', () => {
+    expect(isCapturable('https://trolley-nine.vercel.app/assets/chunk.js', base)).toBe(true);
+  });
+
+  it('captures same-origin relative URLs', () => {
+    expect(isCapturable('/assets/img.png', base)).toBe(true);
+  });
+
+  it('drops cross-origin URLs (e.g. Vercel Live toolbar)', () => {
+    expect(isCapturable('https://vercel.live/_next-live/feedback/feedback.js', base)).toBe(false);
+  });
+
+  it('drops other third-party origins', () => {
+    expect(isCapturable('https://cdn.jsdelivr.net/some/lib.js', base)).toBe(false);
   });
 });
