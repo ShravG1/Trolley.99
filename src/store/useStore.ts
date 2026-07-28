@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import type { Item, ItemStatus, Trip, GroupMember, MyGroup, Shop } from '@/types/models';
-import type { AisleKey } from '@/lib/aisles';
-import { guessAisle, normaliseName } from '@/lib/categorise';
+import { AISLES, type AisleKey } from '@/lib/aisles';
+import { normaliseName, resolveAisle } from '@/lib/categorise';
+import {
+  loadCategoryMemory,
+  saveCategoryMemory,
+  type CategoryMemory,
+} from '@/lib/categoryMemory';
 import { seedItems, seedMembers, seedTrip, CURRENT_USER } from './seed';
 import type { RemoteWriter } from './remote';
 import { shouldNudge } from '@/lib/push';
@@ -102,6 +107,21 @@ interface StoreState {
   /** Reconcile a single item arriving over Realtime, deduped by id (§6.3). */
   applyServerItem: (item: Item) => void;
 
+  // learned item→aisle memory (0016)
+  /** Where this household puts things, keyed by normalised item name. Server
+   *  truth (`item_categories`), mirrored to localStorage so it survives a cold
+   *  or offline boot. Empty = fall back to the keyword guess. */
+  categoryMemory: CategoryMemory;
+  /** Replace the memory wholesale from a server fetch (or the local cache). */
+  setCategoryMemory: (memory: CategoryMemory, groupId?: string) => void;
+  /** Load a group's cached memory synchronously, so the first paint after a
+   *  switch already aisles things correctly rather than flashing the guess. */
+  hydrateCategoryMemory: (groupId: string) => void;
+  /** Remember a member's re-aisle so the next add lands there by itself, and
+   *  say so. A no-op (silent) if it's already what we had — only a real change
+   *  is worth a write and a toast. */
+  learnCategory: (name: string, category: AisleKey) => void;
+
   // shop tabs (#19)
   /** Switch the visible shop tab — instant (data for all tabs is already loaded);
    *  null = Unsorted. Persisted per-group. */
@@ -176,6 +196,10 @@ export const useStore = create<StoreState>((set, get) => ({
   groups: [],
   activeGroupId: loadActiveGroup(),
   switching: false,
+  // Seed from whatever's cached for the group we're most likely to open, so the
+  // very first render already knows the household's aisles. Replaced by the
+  // server fetch (or a group switch) as soon as one lands.
+  categoryMemory: loadCategoryMemory(loadActiveGroup() ?? seedTrip.group_id),
 
   setPushNudge(v) {
     set({ pushNudge: v });
@@ -211,6 +235,9 @@ export const useStore = create<StoreState>((set, get) => ({
       shops: [],
       activeShopId: null,
       switching: true,
+      // Aisle memory is per-group (0016) — drop it with the rest of the slice so
+      // the group we're switching to can't inherit the previous household's.
+      categoryMemory: {},
       // Neutral placeholder so mode() => 'list' (no stale shopper actions) for the
       // group we're switching to, until its real snapshot replaces this.
       trip: {
@@ -364,6 +391,29 @@ export const useStore = create<StoreState>((set, get) => ({
     });
   },
 
+  setCategoryMemory(memory, groupId) {
+    const gid = groupId ?? get().activeGroupId ?? get().trip.group_id;
+    if (gid) saveCategoryMemory(gid, memory);
+    set({ categoryMemory: memory });
+  },
+
+  hydrateCategoryMemory(groupId) {
+    set({ categoryMemory: loadCategoryMemory(groupId) });
+  },
+
+  learnCategory(name, category) {
+    const norm = normaliseName(name);
+    if (!norm) return;
+    const { categoryMemory } = get();
+    if (categoryMemory[norm] === category) return; // already what we knew — no write, no toast
+    get().setCategoryMemory({ ...categoryMemory, [norm]: category });
+    // SERVER: set_item_category RPC — membership-checked, name normalised and
+    // aisle key validated there too (0016). Fire-and-forget: the local memory is
+    // useful on its own, and a failed save just means we learn it again next time.
+    get().remote?.learnCategory(name, category);
+    get().pushToast(`Saved — ${name.trim()} goes in ${AISLES[category].label} next time.`);
+  },
+
   mode() {
     const { trip, userId } = get();
     if (trip.status !== 'shopping') return 'list';
@@ -378,7 +428,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const trimmed = name.trim();
     if (!trimmed) return; // server also rejects empty (§5.5)
 
-    const { items, trip, allTrips, userId, members } = get();
+    const { items, trip, allTrips, userId, members, categoryMemory } = get();
     // Target the selected shop's trip by default; an explicit shopId adds to a
     // different tab (#19). Resolve to a real current trip; never invent an id.
     const targetTrip = shopId === undefined ? trip : pickTrip(allTrips, shopId) ?? trip;
@@ -410,7 +460,9 @@ export const useStore = create<StoreState>((set, get) => ({
       trip_id: targetTrip.id,
       name: trimmed,
       quantity: Math.max(1, quantity),
-      category: category ?? guessAisle(trimmed),
+      // Learned memory first, keyword guess second (§2.4, 0016) — so the tenth
+      // "Oatly" goes straight to Dairy without anyone re-aisling it again.
+      category: category ?? resolveAisle(trimmed, categoryMemory),
       priority: urgent ? 'urgent' : 'normal',
       status: 'pending',
       added_by: userId,
@@ -501,7 +553,9 @@ export const useStore = create<StoreState>((set, get) => ({
     const me = members.find((m) => m.user_id === userId);
     const target = items.find((i) => i.id === id);
     if (!target) return;
-    const guessed = guessAisle(newName);
+    // The replacement is a different thing ("Oat milk" for "Milk") — re-aisle it,
+    // preferring what the household has learned about the new name.
+    const guessed = resolveAisle(newName, get().categoryMemory);
     const patch: Partial<Item> = {
       name: newName.trim() || target.name,
       status: 'substituted',

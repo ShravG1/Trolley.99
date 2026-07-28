@@ -51,6 +51,13 @@ export const AISLES: Record<AisleKey, Aisle> = {
   other: { key: 'other', label: 'Other', order: 99, colorVar: '--aisle-other' },
 };
 
+/** Type guard for an aisle key arriving from outside the app — a server row, a
+ *  localStorage blob, a URL. Anything unrecognised must be rejected here rather
+ *  than indexing AISLES[…] as undefined and crashing a render. */
+export function isAisleKey(value: unknown): value is AisleKey {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(AISLES, value);
+}
+
 export const AISLE_ORDER: AisleKey[] = Object.values(AISLES)
   .sort((a, b) => a.order - b.order)
   .map((a) => a.key);

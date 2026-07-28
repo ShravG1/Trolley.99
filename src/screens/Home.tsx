@@ -62,8 +62,14 @@ export function Home() {
   const lifecycleBlocked = !online && remote != null;
 
   const [addOpen, setAddOpen] = useState(false);
-  const [editItem, setEditItem] = useState<Item | null>(null);
-  const [menuItem, setMenuItem] = useState<Item | null>(null);
+  // Track the open sheets by item ID, never by the Item object. Holding the
+  // object froze a snapshot taken when the sheet opened, so nothing you did
+  // inside it appeared to work: tapping an aisle chip or the Urgent switch
+  // updated the store and the row underneath, while the sheet went on rendering
+  // the item as it was when you tapped it. Resolving from `items` each render
+  // means the sheet reflects the live row — your own edits and other people's.
+  const [editItemId, setEditItemId] = useState<string | null>(null);
+  const [menuItemId, setMenuItemId] = useState<string | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [finishConfirm, setFinishConfirm] = useState(false);
   // Re-evaluate staleness on a timer so "Take over" / "Still shopping?" appear
@@ -130,13 +136,19 @@ export function Home() {
   // Spectators (and the shopper's helpers) can only add while the window is open (§7.2).
   const canAdd = mode === 'list' || (mode === 'spectator' && windowOpen);
 
+  // The open sheets' live rows. `?? null` closes a sheet whose item has gone —
+  // e.g. a trip completed under you and its items were replaced by rolled-over
+  // copies with fresh ids — instead of leaving a sheet pointing at nothing.
+  const editItem = items.find((i) => i.id === editItemId) ?? null;
+  const menuItem = items.find((i) => i.id === menuItemId) ?? null;
+
   // The kebab opens the quick menu (move-between-shops + edit) when there are
   // shops to move between and the item's still live; otherwise it goes straight
   // to the full edit sheet, so a household with no shops sees no change (#19).
   const openMenu = (item: Item) => {
     const movable = item.status === 'pending' || item.status === 'not_found';
-    if (movable && shops.length > 0) setMenuItem(item);
-    else setEditItem(item);
+    if (movable && shops.length > 0) setMenuItemId(item.id);
+    else setEditItemId(item.id);
   };
 
   // Marking bought is a shopping action the DB only allows the active shopper
@@ -155,7 +167,7 @@ export function Home() {
     canBuy,
     onBought: markBought,
     onUndo: restoreItem,
-    onEdit: setEditItem,
+    onEdit: (item: Item) => setEditItemId(item.id),
     onMenu: openMenu,
     onDelete: deleteItem,
     onBuyBlocked,
@@ -323,13 +335,13 @@ export function Home() {
 
       {/* Sheets */}
       <AddSheet open={addOpen} onClose={() => setAddOpen(false)} />
-      <ItemSheet item={editItem} onClose={() => setEditItem(null)} />
+      <ItemSheet item={editItem} onClose={() => setEditItemId(null)} />
       <ItemMenuSheet
         item={menuItem}
-        onClose={() => setMenuItem(null)}
+        onClose={() => setMenuItemId(null)}
         onEditDetails={(it) => {
-          setMenuItem(null);
-          setEditItem(it);
+          setMenuItemId(null);
+          setEditItemId(it.id);
         }}
       />
       <StartShoppingSheet open={startOpen} onClose={() => setStartOpen(false)} />

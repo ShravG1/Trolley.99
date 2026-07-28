@@ -1,6 +1,6 @@
--- Recurring-items + feedback-digest scheduler (§2.8, §9). Applied directly to the
--- hosted project — NOT a migration, because it depends on pg_cron/pg_net + the
--- project URL and would break `supabase db reset` in CI.
+-- Recurring-items + feedback-digest + category-sweep scheduler (§2.8, §9).
+-- Applied directly to the hosted project — NOT a migration, because it depends on
+-- pg_cron/pg_net + the project URL and would break `supabase db reset` in CI.
 --
 -- Both functions now run with verify_jwt=false and are gated by a shared
 -- CRON_SECRET instead (the public anon JWT must not be able to trigger them).
@@ -44,4 +44,19 @@ select cron.schedule(
       body := '{}'::jsonb
     );
   $$
+);
+
+-- Weekly item-category review (0016). Every Monday it looks at what each
+-- household has added recently and gives each item name the aisle they actually
+-- file it under, so the next add lands in the right place without anyone
+-- re-aisling it again. Pure SQL in-database — no edge function, no HTTP, so
+-- there's no secret to gate: refresh_item_categories() is REVOKEd from every
+-- client role and only reachable as the cron job owner.
+select cron.unschedule('trolley-category-sweep')
+  where exists (select 1 from cron.job where jobname = 'trolley-category-sweep');
+
+select cron.schedule(
+  'trolley-category-sweep',
+  '20 4 * * 1', -- 04:20 UTC Mondays, well clear of the daily jobs
+  $$ select public.refresh_item_categories(); $$
 );

@@ -7,8 +7,12 @@ import { EmptyState } from '@/components/EmptyState';
 export function Archive() {
   const navigate = useNavigate();
   const items = useStore((s) => s.items);
+  const tripId = useStore((s) => s.trip.id);
   const restore = useStore((s) => s.restoreItem);
-  const deleted = items.filter((i) => i.status === 'deleted');
+  // Scoped to the shop tab you came from (#19), so this list matches the "N
+  // binned" badge that brought you here — it used to pool every shop's bin into
+  // one screen while the badge counted just the one you were looking at.
+  const deleted = items.filter((i) => i.status === 'deleted' && i.trip_id === tripId);
 
   return (
     <div className="mx-auto min-h-dvh max-w-md px-4 pb-16 pt-5">
