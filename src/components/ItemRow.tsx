@@ -1,6 +1,6 @@
 import { memo, useRef, useState } from 'react';
 import type { Item } from '@/types/models';
-import { AISLES, aisleColor, aisleTint } from '@/lib/aisles';
+import { aisleOf, aisleColor, aisleTint } from '@/lib/aisles';
 import {
   PendingIcon,
   UrgentIcon,
@@ -287,6 +287,6 @@ function subLabel(item: Item): string {
       // A note is a shopper instruction ("get the own-brand one") — more useful
       // at the shelf than the aisle/added-by, so it takes the subtitle line.
       if (item.note) return item.note;
-      return `${AISLES[item.category].label}${item.added_by_name ? ` · added by ${item.added_by_name}` : ''}`;
+      return `${aisleOf(item.category).label}${item.added_by_name ? ` · added by ${item.added_by_name}` : ''}`;
   }
 }

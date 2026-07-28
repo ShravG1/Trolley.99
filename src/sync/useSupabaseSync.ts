@@ -16,6 +16,7 @@ import {
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
 import type { GroupMember, Item, Shop, Trip } from '@/types/models';
+import { isAisleKey } from '@/lib/aisles';
 import type { Database } from '@/types/database';
 import { throttle } from '@/lib/throttle';
 import { resolveActiveGroup } from '@/lib/activeGroup';
@@ -53,7 +54,12 @@ function rowToItem(r: Row): Item {
     trip_id: r.trip_id as string,
     name: r.name as string,
     quantity: r.quantity as number,
-    category: r.category as Item['category'],
+    // `category` is `text` in the DB. 0017 constrains it to the aisle allow-list,
+    // but this is the boundary where a server value becomes an AisleKey the UI
+    // will index AISLES with — narrow it honestly here rather than casting and
+    // hoping. Anything unrecognised (a pre-0017 row, a newer client's aisle)
+    // shows as Other instead of throwing mid-render.
+    category: isAisleKey(r.category) ? r.category : 'other',
     priority: r.priority as Item['priority'],
     status: r.status as Item['status'],
     added_by: r.added_by as string,

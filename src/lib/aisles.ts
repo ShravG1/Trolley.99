@@ -62,12 +62,25 @@ export const AISLE_ORDER: AisleKey[] = Object.values(AISLES)
   .sort((a, b) => a.order - b.order)
   .map((a) => a.key);
 
+/**
+ * AISLES lookup that cannot crash. `category` is `text` on the items row, so a
+ * value the client has never heard of is at least conceivable — a row written
+ * before the allow-list constraint (0017), or a future aisle from a newer client
+ * arriving over Realtime. `AISLES[unknown].label` would throw and take the whole
+ * list down for everyone in the household; falling back to Other just looks
+ * slightly wrong for one row. Prefer this over indexing AISLES directly anywhere
+ * the key came from the server.
+ */
+export function aisleOf(key: string | null | undefined): Aisle {
+  return (key != null && isAisleKey(key) ? AISLES[key] : AISLES.other);
+}
+
 /** The solid colour for an aisle (used directly in style attributes). */
 export function aisleColor(key: AisleKey): string {
-  return `var(${AISLES[key].colorVar})`;
+  return `var(${aisleOf(key).colorVar})`;
 }
 
 /** Derived row tint: aisle solid mixed into the surface (§1.3). */
 export function aisleTint(key: AisleKey): string {
-  return `color-mix(in srgb, var(${AISLES[key].colorVar}) var(--aisle-tint-amount), var(--surface))`;
+  return `color-mix(in srgb, var(${aisleOf(key).colorVar}) var(--aisle-tint-amount), var(--surface))`;
 }

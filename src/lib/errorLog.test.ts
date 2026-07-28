@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeErrorEvent, isCapturable } from './errorLog';
+import { describeErrorEvent, isCapturable, redactUrl, redactUrls } from './errorLog';
 
 // Issue #30: an auto-captured "[Trolley error] Script error." with :0:0 and no
 // stack. That's the browser masking a cross-origin script error — the raw event
@@ -68,5 +68,51 @@ describe('isCapturable', () => {
 
   it('drops other third-party origins', () => {
     expect(isCapturable('https://cdn.jsdelivr.net/some/lib.js', base)).toBe(false);
+  });
+});
+
+// Captured errors are persisted to `feedback` and the daily digest opens a
+// GitHub issue for each. Two URL shapes in this app carry a live credential —
+// the magic-link fragment and the /join/<token> invite — so neither may survive
+// into a report.
+describe('redactUrl / redactUrls', () => {
+  it('strips the magic-link session token from the fragment', () => {
+    const href = 'https://trolley-nine.vercel.app/#access_token=eyJhbGciOi.SECRET&refresh_token=r-SECRET';
+    const out = redactUrl(href);
+    expect(out).not.toMatch(/SECRET/);
+    expect(out).toBe('https://trolley-nine.vercel.app/#<redacted>');
+  });
+
+  it('strips a query string too', () => {
+    expect(redactUrl('https://x.test/cb?code=abc123')).toBe('https://x.test/cb?<redacted>');
+  });
+
+  it('masks the invite token but keeps the route shape', () => {
+    expect(redactUrl('https://trolley-nine.vercel.app/join/deadbeefcafe0123'))
+      .toBe('https://trolley-nine.vercel.app/join/<redacted>');
+    expect(redactUrl('/join/deadbeefcafe0123')).toBe('/join/<redacted>');
+  });
+
+  it('leaves an ordinary route alone', () => {
+    expect(redactUrl('https://trolley-nine.vercel.app/settings'))
+      .toBe('https://trolley-nine.vercel.app/settings');
+    expect(redactUrl('')).toBe('');
+  });
+
+  it('redacts URLs inside a longer string without eating the prose', () => {
+    const body = 'TypeError: x is not a function?\n  at https://app.test/a.js#access_token=SECRET\n@ /join/tok3n';
+    const out = redactUrls(body);
+    expect(out).not.toMatch(/SECRET/);
+    expect(out).not.toMatch(/tok3n/);
+    expect(out).toContain('is not a function?'); // prose question mark survives
+    expect(out).toContain('/join/<redacted>');
+  });
+
+  it('describeErrorEvent never reports a raw credential-bearing href', () => {
+    const out = describeErrorEvent(
+      { message: 'Script error.', filename: '', lineno: 0, colno: 0, error: null },
+      { pathname: '/join/tok3n', href: 'https://app.test/join/tok3n#access_token=SECRET' }
+    );
+    expect(`${out.message} ${out.stack}`).not.toMatch(/SECRET|tok3n/);
   });
 });

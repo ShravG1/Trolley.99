@@ -139,7 +139,12 @@ begin
       join trips t on t.id = i.trip_id
      where i.created_at > now() - make_interval(days => greatest(p_days, 1))
        and i.status <> 'deleted'
-       and i.category <> 'other'
+       -- Only real aisles, and never 'other' — that means "nobody categorised
+       -- this", not "this belongs in Other". The explicit list also means a junk
+       -- category can't reach item_categories' CHECK and abort the whole sweep
+       -- (0017 constrains items.category, so this is belt and braces).
+       and i.category in ('produce', 'bakery', 'meat', 'dairy', 'cupboard', 'snacks',
+                          'drinks', 'frozen', 'household', 'health', 'baby')
        and norm_item_name(i.name) is not null
   ),
   tally as (

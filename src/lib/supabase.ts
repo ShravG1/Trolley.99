@@ -399,7 +399,7 @@ export async function getTripHistory(groupId: string, limit = 25): Promise<TripH
       status: i.status,
       quantity: i.quantity,
       unit: i.unit,
-      category: i.category as AisleKey,
+      category: isAisleKey(i.category) ? i.category : 'other',
       acted_by_name: i.acted_by_name,
     });
     byTrip.set(i.trip_id, list);

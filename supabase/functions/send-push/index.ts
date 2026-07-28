@@ -50,8 +50,25 @@ Deno.serve(async (req) => {
   const caller = userData?.user;
   if (!caller) return json({ error: 'invalid_jwt' }, 401);
 
-  const body = (await req.json()) as Payload;
-  if (!body.groupId) return json({ error: 'bad_request' }, 400);
+  let body: Payload;
+  try {
+    body = (await req.json()) as Payload;
+  } catch {
+    return json({ error: 'bad_request' }, 400);
+  }
+  if (!body || typeof body !== 'object' || !body.groupId) return json({ error: 'bad_request' }, 400);
+
+  // Every string below ends up in a notification on someone else's lock screen,
+  // and the body is signed and posted to a third-party push service. The DB
+  // bounds these columns (item names are 80 chars, display names 40) but this
+  // function is reachable directly with any JSON a member can compose, so clamp
+  // them here rather than trusting the caller's shape.
+  const clamp = (v: unknown, max: number) =>
+    typeof v === 'string' ? v.slice(0, max) : undefined;
+  body.item = clamp(body.item, 80);
+  body.actorName = clamp(body.actorName, 40);
+  body.count = Number.isFinite(body.count) ? Math.max(0, Math.min(9999, Math.trunc(body.count!))) : undefined;
+  body.minutes = Number.isFinite(body.minutes) ? Math.max(0, Math.min(1440, Math.trunc(body.minutes!))) : undefined;
 
   // 2) Confirm membership BEFORE touching service_role (never trust groupId).
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -127,6 +144,11 @@ Deno.serve(async (req) => {
   const dead: string[] = [];
   await Promise.all(
     (subs ?? []).map(async (s: any) => {
+      // Never POST anywhere but an https push endpoint. 0017 constrains the
+      // column so this can't trigger, but this function runs with service_role
+      // and reaches the network — it must not take the DB's word for the one
+      // field that decides where it connects.
+      if (typeof s.endpoint !== 'string' || !s.endpoint.startsWith('https://')) return;
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: s.keys },
