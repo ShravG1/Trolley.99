@@ -1,4 +1,4 @@
-import { AISLES, aisleColor, type AisleKey } from '@/lib/aisles';
+import { aisleOf, aisleColor, type AisleKey } from '@/lib/aisles';
 import { ProgressBar } from './ProgressBar';
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
 // with per-aisle progress in Shopping mode. Colour always paired with the label
 // (§1.8).
 export function AisleHeader({ aisle, count, variant, done = 0, total = 0 }: Props) {
-  const meta = AISLES[aisle];
+  const meta = aisleOf(aisle);
   const color = aisleColor(aisle);
 
   if (variant === 'quiet') {

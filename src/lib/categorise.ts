@@ -1,8 +1,10 @@
-import type { AisleKey } from './aisles';
+import { isAisleKey, type AisleKey } from './aisles';
+import type { CategoryMemory } from './categoryMemory';
 
 // Lightweight keyword auto-categoriser (§2.4). It WILL be wrong sometimes — the
 // re-aisle affordance in the AddSheet is mandatory. Kept client-side and dumb on
-// purpose; the hot list (server-learned) is the smarter signal over time.
+// purpose; it's the FALLBACK now — the household's learned memory (migration
+// 0016, see resolveAisle below) is the smarter signal, and it wins.
 
 const KEYWORDS: Array<[AisleKey, string[]]> = [
   ['produce', ['apple', 'banana', 'tomato', 'potato', 'onion', 'lettuce', 'carrot', 'salad', 'veg', 'fruit', 'avocado', 'lemon', 'lime', 'pepper', 'cucumber', 'spinach', 'broccoli', 'garlic', 'mushroom', 'berries', 'grapes']],
@@ -35,7 +37,27 @@ export function guessAisle(name: string): AisleKey {
   return best?.aisle ?? 'other';
 }
 
-/** Normalise a name for dedupe / hot-list matching (§7.4). */
+/** Normalise a name for dedupe / hot-list matching (§7.4). Must stay in step with
+ *  the DB's `norm_item_name()` (migration 0016) or the learned memory won't match
+ *  what the server stored. */
 export function normaliseName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Which aisle does this household put this thing in? (§2.4, migration 0016.)
+ *
+ * The learned memory wins: if anyone in the group has re-aisled this name — or
+ * the weekly sweep has worked out where they actually file it — that's the
+ * answer, and the keyword guess never gets a look-in. Otherwise fall back to
+ * guessAisle. Unknown/absent memory is always safe: `resolveAisle(name)` is
+ * exactly the old behaviour.
+ */
+export function resolveAisle(name: string, memory?: CategoryMemory | null): AisleKey {
+  const n = normaliseName(name);
+  if (!n) return 'other';
+  const learned = memory?.[n];
+  // Re-validate: memory can come from localStorage, which is user-writable.
+  if (isAisleKey(learned)) return learned;
+  return guessAisle(name);
 }

@@ -3,7 +3,7 @@ import { BottomSheet } from './BottomSheet';
 import { QtyStepper } from './QtyStepper';
 import { ShopChips } from './ShopChips';
 import { AISLES, AISLE_ORDER, aisleColor, type AisleKey } from '@/lib/aisles';
-import { guessAisle } from '@/lib/categorise';
+import { resolveAisle } from '@/lib/categorise';
 import { useStore } from '@/store/useStore';
 import { getHotList, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -22,6 +22,8 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 // MANDATORY), qty stepper, urgent toggle, multi-add tally.
 export function AddSheet({ open, onClose }: Props) {
   const addItem = useStore((s) => s.addItem);
+  const learnCategory = useStore((s) => s.learnCategory);
+  const categoryMemory = useStore((s) => s.categoryMemory);
   const multiAddCount = useStore((s) => s.multiAddCount);
   const resetMultiAdd = useStore((s) => s.resetMultiAdd);
   const groupId = useStore((s) => s.trip.group_id);
@@ -34,6 +36,11 @@ export function AddSheet({ open, onClose }: Props) {
   const [urgent, setUrgent] = useState(false);
   const [aisle, setAisle] = useState<AisleKey>('other');
   const [aisleOpen, setAisleOpen] = useState(false);
+  // Has the user picked the aisle by hand for the name they're typing? Two jobs:
+  // it stops the auto-categoriser stomping their choice on the next keystroke
+  // (the old behaviour — pick Dairy, type one more letter, back to Cupboard),
+  // and it's what tells us the pick is worth remembering (0016).
+  const [aisleTouched, setAisleTouched] = useState(false);
   // Which shop tab to add to (#19) — defaults to the one in view; re-synced each
   // time the sheet opens so it tracks the current tab.
   const [targetShop, setTargetShop] = useState<string | null>(activeShopId);
@@ -51,10 +58,11 @@ export function AddSheet({ open, onClose }: Props) {
       .catch(() => setHot([]));
   }, [open, groupId]);
 
-  // Auto-categorise as you type; user can override via the editable tag.
+  // Auto-categorise as you type — the household's learned aisle first, keyword
+  // guess second (0016). Skipped once they've set it by hand for this name.
   useEffect(() => {
-    if (name.trim()) setAisle(guessAisle(name));
-  }, [name]);
+    if (!aisleTouched && name.trim()) setAisle(resolveAisle(name, categoryMemory));
+  }, [name, categoryMemory, aisleTouched]);
 
   useEffect(() => {
     if (open) resetMultiAdd();
@@ -69,11 +77,19 @@ export function AddSheet({ open, onClose }: Props) {
   function commit() {
     if (!name.trim()) return;
     addItem({ name, quantity: qty, category: aisle, urgent, unit, shopId: targetShop });
+    // A hand-picked aisle that isn't what we'd have guessed is the household
+    // teaching us something — remember it (and say so) so the next add lands
+    // there by itself (0016). Learned at commit, not at tap, so abandoned typing
+    // never trains the memory.
+    if (aisleTouched && aisle !== resolveAisle(name, categoryMemory)) {
+      learnCategory(name, aisle);
+    }
     // Keep the sheet open for rapid multi-add (§2.4).
     setName('');
     setQty(1);
     setUnit('');
     setUrgent(false);
+    setAisleTouched(false);
   }
 
   return (
@@ -83,7 +99,12 @@ export function AddSheet({ open, onClose }: Props) {
           <input
             data-autofocus
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              // Emptying the field starts a fresh thing — let the categoriser
+              // take the wheel again rather than carrying the last hand-pick over.
+              if (!e.target.value.trim()) setAisleTouched(false);
+            }}
             onKeyDown={(e) => e.key === 'Enter' && commit()}
             placeholder="Add something…"
             maxLength={80}
@@ -93,7 +114,10 @@ export function AddSheet({ open, onClose }: Props) {
             <button
               type="button"
               aria-label="Clear"
-              onClick={() => setName('')}
+              onClick={() => {
+                setName('');
+                setAisleTouched(false);
+              }}
               className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-pill text-ink-faint hover:bg-surface hover:text-ink"
             >
               ✕
@@ -114,7 +138,10 @@ export function AddSheet({ open, onClose }: Props) {
           {suggestions.map((s) => (
             <button
               key={s}
-              onClick={() => setName(s)}
+              onClick={() => {
+                setName(s);
+                setAisleTouched(false); // a different thing — re-categorise it
+              }}
               className="inline-flex min-h-11 items-center rounded-pill bg-surface-2 px-3 text-meta text-ink hover:bg-brand-tint"
             >
               {s}
@@ -160,6 +187,7 @@ export function AddSheet({ open, onClose }: Props) {
                   key={key}
                   onClick={() => {
                     setAisle(key);
+                    setAisleTouched(true);
                     setAisleOpen(false);
                   }}
                   className={`flex min-h-11 items-center gap-1.5 rounded-pill border px-3 text-meta ${

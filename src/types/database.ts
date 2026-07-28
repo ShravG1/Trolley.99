@@ -137,6 +137,41 @@ export type Database = {
           },
         ]
       }
+      item_categories: {
+        Row: {
+          category: string
+          group_id: string
+          item_name: string
+          source: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          category: string
+          group_id: string
+          item_name: string
+          source?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          category?: string
+          group_id?: string
+          item_name?: string
+          source?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_categories_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invites: {
         Row: {
           code: string
@@ -428,6 +463,11 @@ export type Database = {
       delete_account: { Args: never; Returns: undefined }
       delete_shop: { Args: { p_shop_id: string }; Returns: undefined }
       is_member: { Args: { gid: string }; Returns: boolean }
+      norm_item_name: { Args: { p_name: string }; Returns: string }
+      set_item_category: {
+        Args: { p_category: string; p_group_id: string; p_name: string }
+        Returns: undefined
+      }
       join_group: {
         Args: { p_code: string; p_display_name?: string }
         Returns: string

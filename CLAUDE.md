@@ -31,6 +31,18 @@ another's list). Touching the DB is security-critical; read before you change.
   server-side. **Migrations are append-only: never edit an applied one** — redefine
   a function in a *new* migration with `CREATE OR REPLACE` (e.g. `0007` redefines
   `join_group`, `0012` redefines `complete_trip`).
+- **The write surface is deliberately narrow (`0017`).** RLS says which rows; the
+  table GRANT says whether the operation exists at all. Clients hold only the
+  privileges the app actually uses — no INSERT on `trips` or `invites`, no
+  INSERT/UPDATE on `groups`, column-scoped UPDATE on `items`. Everything else is a
+  `SECURITY DEFINER` RPC. **If you find yourself wanting to add a grant, add an RPC
+  instead**, and give it a pgTAP assertion plus a positive control.
+- **Item→aisle memory (`0016`)** — `item_categories` is a per-group, RLS-scoped
+  name→aisle map. Members teach it by re-aisling (`set_item_category`, sticky
+  `source='user'`); `refresh_item_categories()` runs weekly under pg_cron and infers
+  the rest as `source='auto'`, never overwriting a user row. The client resolves
+  through it before the keyword guess in `lib/categorise.ts` and mirrors it to
+  localStorage per group.
 - **RLS test suite** — `supabase/tests/rls_test.sql` (pgTAP), run with `supabase test db`.
   It proves cross-group isolation (User A can't read/write User B's data) and is the
   **single most important suite** — `npm run test` (Vitest) never touches it. Any RLS

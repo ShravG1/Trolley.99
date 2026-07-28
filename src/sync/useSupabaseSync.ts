@@ -10,10 +10,13 @@ import {
   probeConnectivity,
   ensureSession,
   fetchShops,
+  fetchItemCategories,
+  saveItemCategory,
 } from '@/lib/supabase';
 import { useStore } from '@/store/useStore';
 import type { RemoteWriter } from '@/store/remote';
 import type { GroupMember, Item, Shop, Trip } from '@/types/models';
+import { isAisleKey } from '@/lib/aisles';
 import type { Database } from '@/types/database';
 import { throttle } from '@/lib/throttle';
 import { resolveActiveGroup } from '@/lib/activeGroup';
@@ -51,7 +54,12 @@ function rowToItem(r: Row): Item {
     trip_id: r.trip_id as string,
     name: r.name as string,
     quantity: r.quantity as number,
-    category: r.category as Item['category'],
+    // `category` is `text` in the DB. 0017 constrains it to the aisle allow-list,
+    // but this is the boundary where a server value becomes an AisleKey the UI
+    // will index AISLES with — narrow it honestly here rather than casting and
+    // hoping. Anything unrecognised (a pre-0017 row, a newer client's aisle)
+    // shows as Other instead of throwing mid-render.
+    category: isAisleKey(r.category) ? r.category : 'other',
     priority: r.priority as Item['priority'],
     status: r.status as Item['status'],
     added_by: r.added_by as string,
@@ -225,6 +233,15 @@ export function useSupabaseSync(): Sync {
         });
       }
 
+      // Refresh the household's learned aisles (0016) alongside the list. Not
+      // awaited: the cached memory is already in the store, so nothing waits on
+      // it, and a null result (pre-migration / offline) leaves the cache alone.
+      void fetchItemCategories(gid).then((memory) => {
+        if (memory && !cancelled && groupId.current === gid) {
+          useStore.getState().setCategoryMemory(memory, gid);
+        }
+      });
+
       subscribeItemsForTrips(tripIds);
     }
 
@@ -304,6 +321,7 @@ export function useSupabaseSync(): Sync {
       // Only show a cached list if it's the group we're trying to view.
       if (activeGroupId && cache.trip.group_id !== activeGroupId) return false;
       groupId.current = cache.trip.group_id;
+      useStore.getState().hydrateCategoryMemory(cache.trip.group_id); // offline boot (0016)
       const items = await reconcileWithQueue(cache.items);
       if (cancelled) return false;
       // Caches written before per-shop tabs (#19) only have a single `trip`.
@@ -336,6 +354,9 @@ export function useSupabaseSync(): Sync {
           return;
         }
         groupId.current = resolved;
+        // Put this group's cached aisle memory up front (0016) so the first
+        // paint already files things correctly; reload() then refreshes it.
+        useStore.getState().hydrateCategoryMemory(resolved);
         installWriter(reload);
         subscribeTrips(resolved);
         subscribePresence(resolved, session!.user.id);
@@ -579,6 +600,13 @@ function installWriter(reload: () => Promise<void>) {
         }
         await reload();
       })();
+    },
+
+    learnCategory(name, category) {
+      // Best-effort (0016): the store has already applied it locally and told the
+      // user. A failure here just means the household re-teaches it next time —
+      // never worth a toast on top of the "Saved" one they just saw.
+      void saveItemCategory(groupIdOf(), name, category).catch(() => {});
     },
 
     notify(kind, ownerId, itemName, actorName) {

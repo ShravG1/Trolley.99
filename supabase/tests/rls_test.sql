@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(30);
+select plan(53);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -123,11 +123,16 @@ select throws_ok(
   'B cannot move an item in A''s group (#19)');
 
 -- --- join_group: valid vs expired vs bogus codes -------------------------
--- A mints two invites for group A: one live, one already expired.
-select act_as('11111111-1111-1111-1111-111111111111');
+-- Two invites for group A with known codes: one live, one already expired.
+-- Seeded as the owner because 0017 revoked the client INSERT grant on invites
+-- (create_invite is the only minter now, and it picks its own random code — no
+-- good for a fixture that has to know the code). The revoke itself is asserted
+-- further down.
+select set_config('role', 'postgres', true);
 insert into invites (group_id, code, token, expires_at, created_by) values
   (:'gid_a', 'LIVE1234', 'live-token', now() + interval '7 days', '11111111-1111-1111-1111-111111111111'),
   (:'gid_a', 'DEAD1234', 'dead-token', now() - interval '1 day',  '11111111-1111-1111-1111-111111111111');
+select act_as('11111111-1111-1111-1111-111111111111');
 
 -- B joins with a bogus code → error.
 select act_as('22222222-2222-2222-2222-222222222222');
@@ -292,6 +297,165 @@ select is(
   (select t.shop_id from items i join trips t on t.id = i.trip_id where i.id = :'move_item'),
   :'shop_a'::uuid,
   'move_item_to_shop still reparents onto a shop''s active trip (#19 review, 0015)');
+
+-- --- learned item categories (0016) --------------------------------------
+-- The category memory is per-group and RPC-write-only. Prove: the RPC normalises
+-- and marks the save as the household's own; a non-member can't write to another
+-- group's memory or read it; the table itself is closed to direct writes; and the
+-- weekly sweep learns from history without ever clobbering a user's choice.
+select act_as('11111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  format($$ select set_item_category(%L, '  Oat   Milk ', 'dairy') $$, :'gid_a'),
+  'a member can save an item category for their own group (0016)');
+
+select is(
+  (select item_name from item_categories where group_id = :'gid_a' and category = 'dairy'),
+  'oat milk',
+  'set_item_category normalises the name the way the client does (0016)');
+
+select is(
+  (select source from item_categories where group_id = :'gid_a' and item_name = 'oat milk'),
+  'user',
+  'an explicit save is recorded as source=user (0016)');
+
+-- A is not a member of group B: writing B's memory must be refused outright.
+select throws_ok(
+  format($$ select set_item_category(%L, 'milk', 'dairy') $$, :'gid_b'),
+  NULL,
+  'a non-member cannot write another household''s category memory (0016)');
+
+-- The aisle key is validated against a fixed allow-list, so `category` can never
+-- become arbitrary client-supplied text.
+select throws_ok(
+  format($$ select set_item_category(%L, 'milk', 'not-an-aisle') $$, :'gid_a'),
+  NULL,
+  'set_item_category rejects an unknown aisle key (0016)');
+
+-- No INSERT policy and no table grant: the RPC is the only door.
+select throws_ok(
+  format($$ insert into item_categories (group_id, item_name, category)
+            values (%L, 'sneaky', 'dairy') $$, :'gid_a'),
+  '42501', NULL,
+  'a client cannot write item_categories directly (RPC-only, 0016)');
+
+-- B writes their OWN group's memory; A must not be able to read it.
+select act_as('22222222-2222-2222-2222-222222222222');
+select set_item_category(:'gid_b', 'B secret item', 'snacks');
+select act_as('11111111-1111-1111-1111-111111111111');
+select is(
+  (select count(*) from item_categories where group_id = :'gid_b')::int, 0,
+  'A cannot read B''s category memory (0016)');
+
+-- The weekly sweep: two 'health' items already exist on shop A's trips, so the
+-- sweep should learn that default. It must NOT touch 'oat milk', which A set by
+-- hand — even though the items below file it under snacks.
+insert into items (id, trip_id, name, quantity, category, priority, status,
+                   added_by, added_by_name)
+values
+  (gen_random_uuid(), :'sh_trip', 'Oat Milk', 1, 'snacks', 'normal', 'pending',
+   '11111111-1111-1111-1111-111111111111', 'Anna'),
+  (gen_random_uuid(), :'sh_trip', 'oat milk', 1, 'snacks', 'normal', 'pending',
+   '11111111-1111-1111-1111-111111111111', 'Anna');
+
+-- The sweep is REVOKEd from every client role — only the cron job owner runs it.
+select throws_ok(
+  $$ select refresh_item_categories() $$,
+  '42501', NULL,
+  'a client cannot trigger the whole-database category sweep (0016)');
+
+select set_config('role', 'postgres', true);
+select lives_ok($$ select refresh_item_categories() $$, 'the sweep runs (0016)');
+
+select is(
+  (select category from item_categories where group_id = :'gid_a' and item_name = 'shampoo'),
+  'health',
+  'the weekly sweep learns a default aisle from what the household actually files (0016)');
+
+select is(
+  (select category from item_categories where group_id = :'gid_a' and item_name = 'oat milk'),
+  'dairy',
+  'the sweep never overwrites a category the household set by hand (0016)');
+
+-- --- write-surface lockdown (0017) ---------------------------------------
+-- Each of these is something a member could do inside their OWN household with a
+-- crafted PostgREST call, bypassing the RPC that exists to prevent it. Positive
+-- controls first: the real app paths must be untouched.
+select act_as('11111111-1111-1111-1111-111111111111');
+
+select lives_ok(
+  format($$ insert into items (id, trip_id, name, category, added_by, added_by_name)
+            values (gen_random_uuid(), %L, 'Lockdown control', 'dairy',
+                    '11111111-1111-1111-1111-111111111111', 'Anna') $$, :'sh_trip'),
+  'members can still add items (0017 — no over-reject)');
+select id as lockdown_item from items where trip_id = :'sh_trip' and name = 'Lockdown control' \gset
+select lives_ok(
+  format($$ update items set category = 'snacks' where id = %L $$, :'lockdown_item'),
+  'members can still re-aisle an item (0017 — no over-reject)');
+select lives_ok(
+  format($$ select create_invite(%L) $$, :'gid_a'),
+  'create_invite still mints an invite (0017 — no over-reject)');
+
+-- A junk category would crash every client in the household on AISLES[…].label.
+select throws_ok(
+  format($$ update items set category = '<img src=x>' where id = %L $$, :'lockdown_item'),
+  '23514', NULL,
+  'items.category is restricted to real aisle keys (0017)');
+select throws_ok(
+  format($$ insert into recurring_items (group_id, name, category, recurrence_rule)
+            values (%L, 'Junk', 'not-an-aisle', 'weekly') $$, :'gid_a'),
+  '23514', NULL,
+  'recurring_items.category is restricted to real aisle keys (0017)');
+
+-- Forging a trip row: a fabricated completed trip in History/Reporting, or a
+-- shopping trip naming someone else as the shopper.
+select throws_ok(
+  format($$ insert into trips (group_id, status, shopper_id, completed_at)
+            values (%L, 'completed', '22222222-2222-2222-2222-222222222222', now()) $$, :'gid_a'),
+  '42501', NULL,
+  'a member cannot insert a trip directly — trips come from RPCs only (0017)');
+
+-- Forging an invite: a guessable, never-expiring key to the household.
+select throws_ok(
+  format($$ insert into invites (group_id, code, token, expires_at, created_by)
+            values (%L, 'AAAAAAAA', 'aaa', null, '11111111-1111-1111-1111-111111111111') $$, :'gid_a'),
+  '42501', NULL,
+  'a member cannot mint their own invite row — create_invite only (0017)');
+
+-- Group rows are read + creator-delete only from a client.
+select throws_ok(
+  format($$ update groups set created_by = '22222222-2222-2222-2222-222222222222'
+            where id = %L $$, :'gid_a'),
+  '42501', NULL,
+  'the creator cannot hand away group ownership with a raw UPDATE (0017)');
+select throws_ok(
+  $$ insert into groups (name, created_by)
+     values ('Sneaky', '11111111-1111-1111-1111-111111111111') $$,
+  '42501', NULL,
+  'a client cannot insert a group directly — create_group only (0017)');
+
+-- A non-https push endpoint is an SSRF target for the service_role sender.
+select throws_ok(
+  $$ insert into push_subscriptions (user_id, endpoint, keys)
+     values ('11111111-1111-1111-1111-111111111111',
+             'http://169.254.169.254/latest/meta-data/', '{}'::jsonb) $$,
+  '23514', NULL,
+  'push endpoints must be https — no SSRF target for send-push (0017)');
+select lives_ok(
+  $$ insert into push_subscriptions (user_id, endpoint, keys)
+     values ('11111111-1111-1111-1111-111111111111',
+             'https://fcm.googleapis.com/fcm/send/abc', '{}'::jsonb) $$,
+  'a real https push endpoint still stores (0017 — no over-reject)');
+
+-- Invite codes come from a CSPRNG now, in the unambiguous alphabet, with a
+-- 256-bit link token and a 7-day expiry.
+select is(
+  (select bool_and(code ~ '^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$'
+                   and token ~ '^[0-9a-f]{64}$'
+                   and expires_at > now() + interval '6 days')
+     from invites where group_id = :'gid_a' and code not in ('LIVE1234', 'DEAD1234')),
+  true,
+  'minted invites are 8 unambiguous chars + a 256-bit token, expiring in 7 days (0017)');
 
 select * from finish();
 rollback;

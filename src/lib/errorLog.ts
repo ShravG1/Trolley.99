@@ -8,6 +8,43 @@ import { supabase, isSupabaseConfigured } from './supabase';
 let sent = 0;
 const MAX_PER_SESSION = 5;
 
+/**
+ * Strip credentials out of a URL before it is written anywhere.
+ *
+ * Captured errors go into the `feedback` table, and the daily digest opens a
+ * GitHub issue for each one — so anything in here leaves the app permanently.
+ * Two URL shapes in this app carry a live credential:
+ *
+ *   * the magic-link return, `…/#access_token=ey…&refresh_token=…` — Supabase
+ *     hands the session back in the fragment, so an error thrown on that first
+ *     paint would have filed a working session token into an issue.
+ *   * an invite link, `/join/<256-bit token>` — the token IS the key to the
+ *     household (§5.2), and it's valid for seven days.
+ *
+ * Drop the query and fragment wholesale (nothing in this app needs them for
+ * debugging) and mask the invite token, keeping the route shape so the report
+ * still tells you where it happened. Exported for unit tests.
+ */
+export function redactUrl(url: string): string {
+  if (!url) return url;
+  return url
+    .replace(/[?#].*$/, (m) => (m[0] === '#' ? '#<redacted>' : '?<redacted>'))
+    .replace(/\/join\/[^/]+/i, '/join/<redacted>');
+}
+
+/**
+ * The same redaction applied to every URL embedded in a longer string (a stack,
+ * a rejection message), leaving the surrounding prose alone — so "is x a
+ * function?" keeps its question mark while a token-bearing URL next to it
+ * doesn't keep its token. A bare `/join/<token>` path with no scheme is caught
+ * too, since that's exactly what `location.pathname` gives us.
+ */
+export function redactUrls(text: string): string {
+  return text
+    .replace(/\bhttps?:\/\/\S+/gi, (u) => redactUrl(u))
+    .replace(/\/join\/[^/\s]+/gi, '/join/<redacted>');
+}
+
 function alreadySeen(key: string): boolean {
   try {
     const seen: string[] = JSON.parse(sessionStorage.getItem('trolley.errSeen') || '[]');
@@ -28,9 +65,12 @@ export async function captureError(message: string, stack?: string): Promise<voi
   try {
     const { data } = await supabase.auth.getUser();
     if (!data.user) return; // RLS needs a signed-in user
-    const body = [message, stack ? `\n${stack.slice(0, 1500)}` : '', `\n@ ${location.pathname}`]
-      .join('')
-      .slice(0, 2000);
+    // Redact on the way OUT, not just at each call site: this is the single
+    // funnel every captured error passes through before it's persisted, so a
+    // future caller can't accidentally route a token-bearing URL around it.
+    const body = redactUrls(
+      [message, stack ? `\n${stack.slice(0, 1500)}` : '', `\n@ ${location.pathname}`].join('')
+    ).slice(0, 2000);
     await supabase.from('feedback').insert({
       user_id: data.user.id,
       kind: 'error',
@@ -71,10 +111,12 @@ export function describeErrorEvent(
   const masked = !e.message || e.message === 'Script error.' || !e.filename;
   if (masked) {
     // No detail available from the event itself — record everything we can see
-    // so this stops being an un-actionable "Script error." (#30).
+    // so this stops being an un-actionable "Script error." (#30). The full href
+    // is the most useful thing here AND the most dangerous: on the magic-link
+    // return it holds a live session token in the fragment. Redact it.
     return {
-      message: `Script error (cross-origin, detail masked) @ ${ctx.pathname}`,
-      stack: `location: ${ctx.href}\nsource: ${e.filename || '<masked>'}:${e.lineno ?? 0}:${e.colno ?? 0}`,
+      message: `Script error (cross-origin, detail masked) @ ${redactUrl(ctx.pathname)}`,
+      stack: `location: ${redactUrl(ctx.href)}\nsource: ${redactUrl(e.filename || '<masked>')}:${e.lineno ?? 0}:${e.colno ?? 0}`,
     };
   }
   return {

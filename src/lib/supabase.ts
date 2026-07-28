@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { MyGroup, ItemStatus, Shop } from '@/types/models';
-import type { AisleKey } from '@/lib/aisles';
+import { isAisleKey, type AisleKey } from '@/lib/aisles';
+import type { CategoryMemory } from '@/lib/categoryMemory';
 import type { Database } from '@/types/database';
 
 // Supabase client (§5.3, §6.1).
@@ -398,7 +399,7 @@ export async function getTripHistory(groupId: string, limit = 25): Promise<TripH
       status: i.status,
       quantity: i.quantity,
       unit: i.unit,
-      category: i.category as AisleKey,
+      category: isAisleKey(i.category) ? i.category : 'other',
       acted_by_name: i.acted_by_name,
     });
     byTrip.set(i.trip_id, list);
@@ -411,6 +412,45 @@ export async function getTripHistory(groupId: string, limit = 25): Promise<TripH
     shopper_id: t.shopper_id,
     items: byTrip.get(t.id) ?? [],
   }));
+}
+
+// --- Learned item categories (0016) ----------------------------------------
+
+/** The household's learned name→aisle memory (migration 0016), as a lookup map.
+ * Returns NULL — distinct from an empty map — when the read fails (table missing
+ * on a frontend deployed ahead of the migration, RLS, offline), so callers can
+ * keep the locally cached memory instead of wiping it with a false "empty".
+ * Rows are validated on the way in: an unknown `category` is dropped, not trusted. */
+export async function fetchItemCategories(groupId: string): Promise<CategoryMemory | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('item_categories')
+    .select('item_name, category')
+    .eq('group_id', groupId);
+  if (error) return null;
+  const out: CategoryMemory = {};
+  for (const r of data ?? []) {
+    const name = r.item_name as string;
+    if (name && isAisleKey(r.category)) out[name] = r.category;
+  }
+  return out;
+}
+
+/** Remember which aisle this household puts an item in. RPC-only: the table has
+ * no client write grant, and the RPC membership-checks, normalises the name and
+ * validates the aisle key server-side (0016). */
+export async function saveItemCategory(
+  groupId: string,
+  name: string,
+  category: AisleKey
+): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.rpc('set_item_category', {
+    p_group_id: groupId,
+    p_name: name,
+    p_category: category,
+  });
+  if (error) throw error;
 }
 
 /** Frequency-ranked item names learned from completed trips (§2.4 type-ahead). */

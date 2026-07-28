@@ -16,6 +16,7 @@ beforeEach(() => {
     toasts: [],
     multiAddCount: 0,
     remote: null,
+    categoryMemory: {},
   });
 });
 
@@ -387,5 +388,68 @@ describe('shop tabs (#19)', () => {
     const razors = s.items.find((i) => i.name === 'Razors')!;
     const razorsTrip = s.allTrips.find((t) => t.id === razors.trip_id)!;
     expect(razorsTrip.shop_id ?? null).toBeNull(); // moved to Unsorted
+  });
+});
+
+describe('learned item categories (0016)', () => {
+  it('a new add uses the household’s learned aisle over the keyword guess', () => {
+    useStore.setState({ categoryMemory: { 'ice cream': 'snacks' } });
+    useStore.getState().addItem({ name: 'Ice cream', quantity: 1, urgent: false });
+    const item = useStore.getState().items.find((i) => i.name === 'Ice cream')!;
+    expect(item.category).toBe('snacks'); // guessAisle would have said 'frozen'
+  });
+
+  it('an explicit category on the add still wins over the memory', () => {
+    useStore.setState({ categoryMemory: { 'ice cream': 'snacks' } });
+    useStore.getState().addItem({ name: 'Ice cream', quantity: 1, urgent: false, category: 'frozen' });
+    expect(useStore.getState().items.find((i) => i.name === 'Ice cream')!.category).toBe('frozen');
+  });
+
+  it('learnCategory remembers the choice and says so', () => {
+    useStore.getState().learnCategory('  Oat  Milk ', 'dairy');
+    const s = useStore.getState();
+    expect(s.categoryMemory['oat milk']).toBe('dairy'); // stored normalised
+    expect(s.toasts.at(-1)!.message).toMatch(/Saved/);
+    expect(s.toasts.at(-1)!.message).toMatch(/Dairy & Eggs/);
+  });
+
+  it('re-teaching the same thing is silent — no write, no toast', () => {
+    useStore.getState().learnCategory('Oat milk', 'dairy');
+    const toastsAfterFirst = useStore.getState().toasts.length;
+    useStore.getState().learnCategory('oat  milk', 'dairy');
+    expect(useStore.getState().toasts.length).toBe(toastsAfterFirst);
+  });
+
+  it('changing your mind overwrites the memory and toasts again', () => {
+    useStore.getState().learnCategory('Hummus', 'dairy');
+    useStore.getState().learnCategory('Hummus', 'cupboard');
+    expect(useStore.getState().categoryMemory.hummus).toBe('cupboard');
+    expect(useStore.getState().toasts.length).toBe(2);
+  });
+
+  it('ignores an empty name', () => {
+    useStore.getState().learnCategory('   ', 'dairy');
+    expect(Object.keys(useStore.getState().categoryMemory).length).toBe(0);
+    expect(useStore.getState().toasts.length).toBe(0);
+  });
+
+  it('what you learn is what the next add uses', () => {
+    useStore.getState().learnCategory('Oatly', 'dairy');
+    useStore.getState().addItem({ name: 'oatly', quantity: 1, urgent: false });
+    expect(useStore.getState().items.find((i) => i.name === 'oatly')!.category).toBe('dairy');
+  });
+
+  it('a substitute lands in the aisle the household keeps the replacement in', () => {
+    useStore.setState({ categoryMemory: { oatly: 'dairy' } });
+    useStore.getState().startShopping(0);
+    const milk = useStore.getState().items.find((i) => i.name === 'Milk')!;
+    useStore.getState().substitute(milk.id, 'Oatly', '');
+    expect(useStore.getState().items.find((i) => i.id === milk.id)!.category).toBe('dairy');
+  });
+
+  it('setCategoryMemory replaces the map wholesale', () => {
+    useStore.getState().setCategoryMemory({ milk: 'dairy' });
+    useStore.getState().setCategoryMemory({ bread: 'bakery' });
+    expect(useStore.getState().categoryMemory).toEqual({ bread: 'bakery' });
   });
 });
