@@ -128,7 +128,14 @@ create or replace function create_invite(p_group_id uuid)
 returns table(code text, token text, expires_at timestamptz)
 language plpgsql
 security definer
-set search_path = public
+-- `extensions` is on the path because that is where hosted Supabase installs
+-- pgcrypto, and gen_random_bytes lives in it. (0001's `create extension if not
+-- exists pgcrypto` is a no-op there — the platform has already installed it into
+-- `extensions` — so a bare `search_path = public` resolves gen_random_uuid, which
+-- is a pg_catalog builtin, but NOT gen_random_bytes.) A plain Postgres that put
+-- pgcrypto in `public` still works: public is searched first, and a schema on the
+-- path that doesn't exist is skipped rather than erroring.
+set search_path = public, extensions
 as $$
 declare
   v_code text;
