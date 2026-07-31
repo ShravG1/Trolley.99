@@ -7,6 +7,12 @@ A shared, real-time shopping-list PWA for households — one list, everyone shop
 - Supabase (`@supabase/supabase-js`) for shared real-time data
 - PWA; deployed on Vercel
 
+## Frontend architecture
+
+- **Item writes are queue-mediated and offline-first.** Nothing writes to Supabase directly — all writes go through `src/sync/` (IndexedDB queue: `queue/idb.ts`, coalescing: `queue/coalesce.ts`, FIFO replay: `queue/replay.ts`), wired up by `useSupabaseSync.ts`. See `docs/OFFLINE_PLAN.md` and `docs/ARCHITECTURE.md` for the design rationale.
+- **Error capture is in-house.** Uncaught errors are written to the `feedback` table (`kind=error`) via `src/lib/errorLog.ts` — no third-party service.
+- **Design docs live in `docs/`.** `OFFLINE_PLAN.md`, `ARCHITECTURE.md`, `SECURITY.md`, `OFFLINE_TRIP_LIFECYCLE_PLAN.md`, and others.
+
 ## Run / test
 ```bash
 npm install
