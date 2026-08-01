@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(53);
+select plan(63);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -50,6 +50,25 @@ select create_shop(:'gid_a', 'Tesco') as shop_a \gset
 select i.id as item_a from items i join trips t on t.id = i.trip_id
   where t.group_id = :'gid_a' and i.name = 'A milk' limit 1 \gset
 
+-- Additional fixtures for the five tables with no previous isolation assertions
+-- (push_subscriptions, recurring_items, hot_list, feedback, join_attempts — #38).
+-- recurring_items: A creates one in group A (member-gated for all).
+insert into recurring_items (group_id, name, default_qty, category, recurrence_rule)
+  values (:'gid_a', 'Bread', 2, 'bakery', 'weekly');
+
+-- push_subscriptions: A registers a push endpoint (own-row-only).
+insert into push_subscriptions (user_id, endpoint, keys)
+  values ('11111111-1111-1111-1111-111111111111',
+          'https://push.example/a-endpoint',
+          '{"auth":"aauthkey","p256dh":"ap256dh"}');
+
+-- hot_list: seed one row as the superuser — only service_role / SECURITY DEFINER
+-- (complete_trip) may write this table; reset role mimics that context so we have
+-- data to test read isolation before complete_trip has been called in this test.
+reset role;
+insert into hot_list (group_id, item_name, frequency) values (:'gid_a', 'breadcrumbs', 4);
+select set_config('role', 'authenticated', true);
+
 -- --- Cross-group READ isolation ------------------------------------------
 select act_as('22222222-2222-2222-2222-222222222222');
 
@@ -76,6 +95,20 @@ select is(
 select is(
   (select count(*) from shops where group_id = :'gid_a')::int, 0,
   'B cannot read A''s shops (#19)');
+
+-- Tables with no previous isolation assertions (#38).
+select is(
+  (select count(*) from recurring_items where group_id = :'gid_a')::int, 0,
+  'B cannot read A''s recurring_items');
+
+select is(
+  (select count(*) from hot_list where group_id = :'gid_a')::int, 0,
+  'B cannot read A''s hot_list');
+
+select is(
+  (select count(*) from push_subscriptions
+    where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
+  'B cannot read A''s push_subscriptions (own-row-only)');
 
 -- --- Cross-group WRITE isolation -----------------------------------------
 -- Grab A's real trip id (impersonating A so RLS lets us read it), then attack as B.
@@ -121,6 +154,27 @@ select throws_ok(
   format($$ select move_item_to_shop(%L, %L) $$, :'item_a', :'shop_a'),
   NULL,
   'B cannot move an item in A''s group (#19)');
+
+-- Write-rejection assertions for the five previously-uncovered tables (#38).
+select throws_ok(
+  format($$ insert into recurring_items (group_id, name, default_qty, category, recurrence_rule)
+            values (%L, 'Hack', 1, 'other', 'weekly') $$, :'gid_a'),
+  '42501', NULL,
+  'B cannot insert a recurring_item into A''s group');
+
+select throws_ok(
+  $$ insert into push_subscriptions (user_id, endpoint, keys)
+     values ('11111111-1111-1111-1111-111111111111',
+             'https://push.example/forge',
+             '{"auth":"x","p256dh":"x"}') $$,
+  '42501', NULL,
+  'B cannot insert a push_subscription forging A''s user_id');
+
+select throws_ok(
+  format($$ insert into hot_list (group_id, item_name, frequency)
+            values (%L, 'Hack', 1) $$, :'gid_a'),
+  '42501', NULL,
+  'B cannot INSERT into hot_list (only SELECT grant to authenticated)');
 
 -- --- join_group: valid vs expired vs bogus codes -------------------------
 -- Two invites for group A with known codes: one live, one already expired.
@@ -456,6 +510,33 @@ select is(
      from invites where group_id = :'gid_a' and code not in ('LIVE1234', 'DEAD1234')),
   true,
   'minted invites are 8 unambiguous chars + a 256-bit token, expiring in 7 days (0017)');
+
+-- --- feedback and join_attempts: no client read / no full grant (#38) --------
+-- feedback has INSERT-only grant (no SELECT); join_attempts has NO grant at all.
+-- Both block at the privilege layer before RLS is even consulted.
+select act_as('22222222-2222-2222-2222-222222222222');
+
+select throws_ok(
+  $$ select count(*) from feedback $$,
+  '42501', NULL,
+  'clients cannot SELECT from feedback (no SELECT grant)');
+
+select throws_ok(
+  $$ insert into feedback (user_id, group_id, kind, message)
+     values ('11111111-1111-1111-1111-111111111111', null, 'feedback', 'forge') $$,
+  '42501', NULL,
+  'B cannot INSERT feedback attributed to A (RLS WITH CHECK rejects)');
+
+select throws_ok(
+  $$ select count(*) from join_attempts $$,
+  '42501', NULL,
+  'clients cannot SELECT from join_attempts (no grant at all)');
+
+select throws_ok(
+  $$ insert into join_attempts (user_id)
+     values ('22222222-2222-2222-2222-222222222222') $$,
+  '42501', NULL,
+  'clients cannot INSERT into join_attempts (no grant at all)');
 
 select * from finish();
 rollback;
