@@ -54,7 +54,7 @@ select i.id as item_a from items i join trips t on t.id = i.trip_id
 -- (push_subscriptions, recurring_items, hot_list, feedback, join_attempts — #38).
 -- recurring_items: A creates one in group A (member-gated for all).
 insert into recurring_items (group_id, name, default_qty, category, recurrence_rule)
-  values (:'gid_a', 'Bread', 2, 'food', 'weekly');
+  values (:'gid_a', 'Bread', 2, 'bakery', 'weekly');
 
 -- push_subscriptions: A registers a push endpoint (own-row-only).
 insert into push_subscriptions (user_id, endpoint, keys)
