@@ -85,6 +85,15 @@ carries a `view-transition-name` so the browser tweens them between layouts. Und
   network-first and never written into a shared cache.
 - Update lifecycle prompts "New version — refresh" (`UpdatePrompt`) rather than
   swapping mid-action.
-- **Offline policy is explicit (§8.2): online-first.** Reads can come from cache;
-  **writes require a connection** and are disabled with the offline banner. No
-  offline write-queue in V1 — that's V2.
+- **Offline policy (§8.2, superseding the "online-first, V2" line this used to
+  say): item writes and reads are offline-first, trip lifecycle is online-only.**
+  Item adds/edits/ticks go through a durable IndexedDB write queue
+  (`src/sync/`) — they apply optimistically, queue while offline, and replay
+  FIFO with idempotent upserts once back online (`VITE_OFFLINE_QUEUE`, on by
+  default). An offline boot restores the last server snapshot plus any
+  still-queued changes from IDB rather than hanging on the splash screen
+  (`VITE_OFFLINE_CACHE`, on by default). Full design: `docs/OFFLINE_PLAN.md`.
+  Starting/cancelling/completing a shopping trip still requires a connection —
+  those transitions are blocked with an explicit reason on the offline banner
+  rather than queued, because rollover and the single-shopper claim are hard
+  to make safe against stale offline state (`docs/OFFLINE_TRIP_LIFECYCLE_PLAN.md`).
