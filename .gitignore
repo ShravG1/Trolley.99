@@ -27,5 +27,8 @@ npm-debug.log*
 # scratch icon previews
 icon-previews/
 
+# ANALYZE=true npm run build output
+bundle-stats.html
+
 # Claude Code agent worktrees (transient)
 .claude/worktrees/

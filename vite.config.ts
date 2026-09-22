@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { visualizer } from 'rollup-plugin-visualizer';
 import { fileURLToPath, URL } from 'node:url';
 
 // https://vitejs.dev/config/
@@ -12,6 +13,19 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // `ANALYZE=true npm run build` emits bundle-stats.html at the repo root
+    // (treemap of what's actually in each chunk) — off by default so it
+    // doesn't slow down or clutter every ordinary build. Deliberately NOT
+    // written into dist/: the SW's injectManifest globs dist/**/*.html for
+    // precaching, and this report isn't part of the app.
+    process.env.ANALYZE
+      ? visualizer({
+          filename: 'bundle-stats.html',
+          gzipSize: true,
+          brotliSize: true,
+          template: 'treemap',
+        })
+      : undefined,
     VitePWA({
       // Custom SW (src/sw.ts) so we can handle Web Push (§2.10) + control updates.
       strategies: 'injectManifest',
@@ -45,4 +59,22 @@ export default defineConfig({
       devOptions: { enabled: false },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Vendor code changes far less often than app code. Splitting it into
+        // its own chunk means a normal deploy (app code only) invalidates a
+        // much smaller slice of what the service worker has to re-fetch and
+        // re-precache on update — most returning visits stay on a warm cache.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@supabase/supabase-js')) return 'vendor-supabase';
+          if (/[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return 'vendor-react';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 });

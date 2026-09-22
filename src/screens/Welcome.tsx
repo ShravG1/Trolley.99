@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { signInWithMagicLink, isSupabaseConfigured } from '@/lib/supabase';
 import { isInstalledPWA, isIOS } from '@/lib/push';
-import { ShareGlyph } from '@/components/InstallPrompt';
+import { ShareGlyph } from '@/components/ShareGlyph';
 
 // First run (§2.1) — single email field → magic link. No passwords.
 // Email enumeration: the confirmation looks identical whether or not the email
