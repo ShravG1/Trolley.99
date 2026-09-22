@@ -1,32 +1,49 @@
 # Performance & budgets (§10)
 
-## Fonts — the biggest weight risk
+## Fonts — done
 
-Three families (Bricolage Grotesque, Hanken Grotesk, JetBrains Mono). For dev we
-load Bricolage + Hanken from Google Fonts via a CSS `@import` in
-`src/styles/global.css`. **Before launch this must change:**
+Three families (Bricolage Grotesque, Hanken Grotesk, JetBrains Mono), all
+self-hosted via `@fontsource-variable/*` packages (no Google round-trip,
+works offline) — the pre-launch items below are all shipped:
 
-- **Self-host** all three (no Google round-trip per load).
-- **Subset** to the glyphs actually used.
-- `font-display: swap`.
-- **Lazy-load JetBrains Mono on the Reporting route only** — it's used solely for
-  the headline figures and the `3 / 12` counters. The Reporting screen is already
-  code-split (`React.lazy` in `App.tsx`), so its CSS/font should load with it.
+- **Self-hosted**, not a Google Fonts `@import`.
+- **Lazy-loaded**: only Bricolage + Hanken (the two used everywhere) load at
+  boot (`src/main.tsx`); JetBrains Mono loads only on the Reporting route,
+  which is itself code-split (`React.lazy` in `App.tsx`) — its font arrives
+  with it, not before.
+- The Workbox config cache-firsts `woff2` so a returning visit never
+  re-fetches them at all.
 
-Recommended path: `@fontsource/*` packages (self-hosted, subsettable) or a manual
-`woff2` subset committed to `public/fonts/` with `@font-face` + `font-display: swap`.
-The Workbox config already cache-firsts `woff2`.
+Not done: glyph subsetting (`@fontsource-variable` ships the full variable
+axis) and `font-display: swap` isn't explicitly set — worth revisiting if a
+Lighthouse run flags font-load as a bottleneck, but hasn't been necessary so
+far given the caching above.
 
 ## Bundles
 
-- **Code-split by route** — Reporting and (next) Settings out of the initial bundle.
-- **Budget:** initial route (shell + list) ≤ ~120 KB gzip, fonts excluded.
-  Current build is ~123 KB gzip; the bulk is `@supabase/supabase-js`. Levers to get
-  under budget:
-  - Import the Supabase client lazily (only the auth + realtime entrypoints the list
-    needs), or defer it until after first paint of the cached list.
-  - Tree-shake unused Supabase sub-clients (storage, functions) if not used on the
-    list route.
+- **Code-split by route**: Lists, Settings, Archive, Privacy, GroupSetup,
+  Reporting, History, plus the below-the-fold chrome (Onboarding, PushNudge,
+  InstallPrompt, UpdatePrompt) are all `React.lazy`. Only Home and Welcome —
+  what a first or return visit actually lands on — stay in the eager bundle.
+- **Vendor chunking**: `react`/`react-dom`/`react-router-dom` and
+  `@supabase/supabase-js` are split into their own chunks
+  (`vite.config.ts`'s `manualChunks`) so a deploy that only changes app code
+  doesn't invalidate them — the service worker re-fetches far less on update.
+- **Current numbers** (`ANALYZE=true npm run build`, see `bundle-stats.html`):
+  eager app chunk ~100 KB gzip ~29 KB, `vendor-react` ~161 KB gzip ~53 KB,
+  `vendor-supabase` ~201 KB gzip ~52 KB — cold-load total is still every
+  vendor byte (splitting doesn't shrink that), but SW precache dropped from
+  ~1000 KB to ~789 KB by removing Framer Motion (see below) and code-splitting
+  the rest. Re-run the analyzer before trusting these numbers stale — they'll
+  drift as deps change.
+- **Framer Motion was removed** (it backed only the CartLoader spinner, which
+  is on the critical cold-load path via `<Splash/>` — ironic for a "loading"
+  animation to be the thing slowing load down). Rewritten as plain CSS
+  keyframes; `prefers-reduced-motion` handled via a CSS media query instead
+  of the JS hook. Zero remaining `framer-motion` usage in `src/`.
+- Import the Supabase client lazily, or tree-shake unused Supabase
+  sub-clients (storage, functions), remain untried levers if
+  `vendor-supabase` needs to shrink further.
 - **List virtualisation:** not added — a weekly shop won't exceed ~100 rows. Noted as
   a lever if lists ever grow.
 - **Realtime efficiency:** one scoped subscription; spectator updates animate locally
