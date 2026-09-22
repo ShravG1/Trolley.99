@@ -15,10 +15,10 @@ interface Props {
   item: Item;
   density: 'list' | 'shopping';
   readOnly?: boolean;
-  /** May this user mark the item bought right now? Only true in Shopping mode —
-   *  the DB rejects a bought/substituted/not-found write otherwise (§7/0013), so
-   *  offering it in List mode just gets the optimistic tick rolled back. Undoing
-   *  an already-done item stays allowed regardless. */
+  /** May this user mark the item bought right now? True in Shopping mode for the
+   *  active shopper, and in List mode for any member (before a shop's started) —
+   *  mirrors the items_update WITH CHECK (§7/0013/0018). Undoing an already-done
+   *  item stays allowed regardless. */
   canBuy: boolean;
   onBought: (id: string) => void;
   onUndo: (id: string) => void;
@@ -61,10 +61,10 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, canBuy, 
 
   // Bought⇄pending toggle, shared by the checkbox tap and the right-swipe so both
   // obey the same rule. Un-ticking a done item (→ pending) is always allowed for
-  // members; marking bought is a shopping action the DB only permits for the
-  // active shopper (RLS 0013), so outside Shopping mode we nudge rather than fire
-  // a write that would be dropped and rolled back a beat later ("the list moved
-  // on") — the loop this fixes.
+  // members. Marking bought is allowed for any member before a shop starts, or
+  // for the active shopper once one has (RLS 0013/0018) — the remaining blocked
+  // case is a non-shopper mid-shop, where we nudge rather than fire a write that
+  // would be dropped and rolled back a beat later ("the list moved on").
   const toggleStatus = () => {
     if (done) onUndo(item.id);
     else if (canBuy) onBought(item.id);
@@ -171,7 +171,7 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, canBuy, 
       {(dx !== 0 || revealed) && (
         <div className="absolute inset-0 flex items-stretch justify-between">
           <span className="flex items-center gap-2 px-5 font-semibold" style={{ color: 'var(--brand)' }} aria-hidden="true">
-            <BoughtIcon /> {done ? 'Undo' : canBuy ? 'Bought' : 'Go shopping'}
+            <BoughtIcon /> {done ? 'Undo' : canBuy ? 'Bought' : "Shopper's turn"}
           </span>
           <button
             type="button"
@@ -220,7 +220,7 @@ export const ItemRow = memo(function ItemRow({ item, density, readOnly, canBuy, 
             toggleStatus();
           }}
           disabled={readOnly}
-          aria-label={done ? `Un-tick ${item.name}` : canBuy ? `Mark ${item.name} as bought` : `Start shopping to tick off ${item.name}`}
+          aria-label={done ? `Un-tick ${item.name}` : canBuy ? `Mark ${item.name} as bought` : `Only the shopper can tick off ${item.name} right now`}
           className={`grid h-11 w-11 shrink-0 place-items-center rounded-pill ${readOnly ? 'opacity-60' : ''}`}
           style={{ color: iconColor }}
         >

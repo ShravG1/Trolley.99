@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canAddItem, canMarkBought, windowOpen, isShopStale, lastActivity } from './rules';
+import { canAddItem, canMarkBought, canActOnItem, windowOpen, isShopStale, lastActivity } from './rules';
 import type { Trip } from '@/types/models';
 
 const t = (over: Partial<Trip>): Trip => ({
@@ -43,20 +43,34 @@ describe('window-close enforcement (§7.2)', () => {
   });
 });
 
-describe('mark-bought gate — mirrors items_update WITH CHECK (§7/0013)', () => {
+describe('mark-bought gate — mirrors items_update WITH CHECK (§7/0013/0018)', () => {
   it('the shopper may mark bought while shopping', () => {
     expect(canMarkBought(t({ status: 'shopping', shopper_id: 'me' }), 'me')).toBe(true);
   });
 
-  it('a non-shopper (spectator) may not, even mid-shop', () => {
+  it('a non-shopper (spectator) may not, even mid-shop — the swipe-loop guard', () => {
+    // The DB rejects it, so the UI must not offer it (else the optimistic tick loops).
     expect(canMarkBought(t({ status: 'shopping', shopper_id: 'someone-else' }), 'me')).toBe(false);
   });
 
-  it('nobody may mark bought in List mode (trip active) — the swipe-loop guard', () => {
-    // Even the eventual shopper can't tick while the trip is still active: the DB
-    // rejects it, so the UI must not offer it (else the optimistic tick loops).
-    expect(canMarkBought(t({ status: 'active', shopper_id: null }), 'me')).toBe(false);
-    expect(canMarkBought(t({ status: 'active', shopper_id: 'me' }), 'me')).toBe(false);
+  it('any member may mark bought in List mode (trip active) — ticking off before a shop starts', () => {
+    expect(canMarkBought(t({ status: 'active', shopper_id: null }), 'me')).toBe(true);
+    expect(canMarkBought(t({ status: 'active', shopper_id: 'someone-else' }), 'me')).toBe(true);
+  });
+});
+
+describe('substitute/not-found gate — narrower than mark-bought (§7/0013, unwidened by 0018)', () => {
+  it('the shopper may substitute/mark-not-found while shopping', () => {
+    expect(canActOnItem(t({ status: 'shopping', shopper_id: 'me' }), 'me')).toBe(true);
+  });
+
+  it('a non-shopper (spectator) may not, even mid-shop', () => {
+    expect(canActOnItem(t({ status: 'shopping', shopper_id: 'someone-else' }), 'me')).toBe(false);
+  });
+
+  it('nobody may substitute/mark-not-found in List mode — unlike plain bought, 0018 did not widen this', () => {
+    expect(canActOnItem(t({ status: 'active', shopper_id: null }), 'me')).toBe(false);
+    expect(canActOnItem(t({ status: 'active', shopper_id: 'me' }), 'me')).toBe(false);
   });
 });
 

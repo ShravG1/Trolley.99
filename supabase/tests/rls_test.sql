@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(53);
+select plan(55);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -207,6 +207,40 @@ insert into items (id, trip_id, name, quantity, category, priority, status,
   values (gen_random_uuid(), :'sh_trip', 'Probe item', 1, 'other', 'normal', 'pending',
           '11111111-1111-1111-1111-111111111111', 'Anna');
 select id as probe from items where trip_id = :'sh_trip' and name = 'Probe item' limit 1 \gset
+
+-- --- items_update WITH CHECK: mark-bought outside shop mode (#18) --------
+-- sh_trip is still 'active' at this point (start_shopping hasn't run yet).
+-- Both probe rows are inserted now, as A (their added_by), while sh_trip is
+-- still 'active' — items_insert's own WITH CHECK requires added_by = caller.
+insert into items (id, trip_id, name, quantity, category, priority, status,
+                   added_by, added_by_name)
+  values
+    (gen_random_uuid(), :'sh_trip', 'List-mode probe', 1, 'other', 'normal', 'pending',
+     '11111111-1111-1111-1111-111111111111', 'Anna'),
+    (gen_random_uuid(), :'sh_trip', 'List-mode probe 2', 1, 'other', 'normal', 'pending',
+     '11111111-1111-1111-1111-111111111111', 'Anna');
+select id as list_mode_probe from items where trip_id = :'sh_trip' and name = 'List-mode probe' limit 1 \gset
+select id as list_mode_probe2 from items where trip_id = :'sh_trip' and name = 'List-mode probe 2' limit 1 \gset
+
+-- Positive control: ANY member (not just an eventual shopper) can tick an item
+-- bought while the trip is still active — the whole point of #18.
+select act_as('22222222-2222-2222-2222-222222222222');
+select lives_ok(
+  format($$ update items set status = 'bought',
+            acted_by = '22222222-2222-2222-2222-222222222222', acted_by_name = 'Ben'
+            where id = %L $$, :'list_mode_probe'),
+  'any member can mark an item bought while the trip is active, not just the shopper (#18)');
+
+-- Negative control: #18 widened 'bought' specifically, NOT substituted/not_found
+-- — those still presuppose someone's actually at the shop. Still acting as B.
+select throws_ok(
+  format($$ update items set status = 'not_found',
+            acted_by = '22222222-2222-2222-2222-222222222222', acted_by_name = 'Ben'
+            where id = %L $$, :'list_mode_probe2'),
+  '42501', NULL,
+  '"not found" stays shopping-mode-only even after #18 — a member cannot use it while the trip is active');
+
+select act_as('11111111-1111-1111-1111-111111111111');
 select start_shopping(:'sh_trip', 0);  -- A is now the shopper
 
 -- (b) A non-shopper member (B) cannot mark an item bought server-side.

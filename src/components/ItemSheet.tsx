@@ -4,7 +4,7 @@ import { QtyStepper } from './QtyStepper';
 import { ShopChips } from './ShopChips';
 import { AISLES, AISLE_ORDER, aisleColor, type AisleKey } from '@/lib/aisles';
 import { useStore } from '@/store/useStore';
-import { canMarkBought } from '@/lib/rules';
+import { canActOnItem } from '@/lib/rules';
 import type { Item } from '@/types/models';
 
 interface Props {
@@ -42,13 +42,15 @@ export function ItemSheet({ item, onClose }: Props) {
   const trip = useStore((s) => s.trip);
   const userId = useStore((s) => s.userId);
   // Substitute / Not found are shopping actions the DB only lets the active
-  // shopper make (RLS 0013). Outside Shopping mode they'd optimistically apply and
-  // then get rolled back ("the list moved on"), so don't offer them while planning.
+  // shopper make (RLS 0013) — unlike plain "bought" (0018), these stay
+  // shop-mode-only: "not found" or "substituted" presupposes someone's actually
+  // at the shop. Outside Shopping mode they'd optimistically apply and then get
+  // rolled back ("the list moved on"), so don't offer them while planning.
   // Judge against the item's OWN trip, not the tab in view: with per-shop tabs
   // (#19) they can differ, and asking the wrong trip would offer actions the DB
   // then refuses (or hide ones it would allow).
   const itemTrip = allTrips.find((t) => t.id === item?.trip_id) ?? trip;
-  const canAct = canMarkBought(itemTrip, userId);
+  const canAct = canActOnItem(itemTrip, userId);
   // A row someone ELSE has actioned (bought / substituted / not-found / binned)
   // is frozen server-side: items_update's WITH CHECK (0013a) only lets a row keep
   // an acted_by stamp that is your own, so any patch we sent would come back

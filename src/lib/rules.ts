@@ -20,16 +20,35 @@ export function canAddItem(trip: Trip, userId: string, nowMs: number): boolean {
 }
 
 /**
- * May this user mark items bought / substituted / not-found right now? Mirrors
- * the items_update WITH CHECK (§7.2, migration 0013): the three shopping ACTIONS
- * are permitted only while the trip is 'shopping' AND the caller is its shopper.
- * In List mode (trip 'active') the DB rejects them, so the UI must not offer them
- * — an optimistic tick would just be rolled back a beat later ("the list moved
- * on"), which reads as the tick looping. Undo/restore (→ pending) is a
- * list-management transition that stays open to any member, so it's deliberately
- * NOT covered here.
+ * May this user mark an item BOUGHT right now (the tick-off, in ItemRow)?
+ * Mirrors the items_update WITH CHECK (§7.2, migrations 0013 + 0018): allowed
+ * if EITHER the trip is 'shopping' and the caller is its shopper (mid-shop
+ * stays single-shopper — no racing ticks), OR the trip is 'active' and the
+ * caller is a member (ticking something off before anyone's gone to the
+ * shop — you already had it, someone brought it back separately, etc). A
+ * 'completed' trip's items are historical either way. Getting this wrong in
+ * either direction would either offer a tick the DB rejects (rolled back a
+ * beat later, reading as the tick looping) or hide one the DB would allow.
+ * Undo/restore (→ pending) is a list-management transition that stays open to
+ * any member regardless, so it's deliberately NOT covered here.
+ *
+ * NOT the same gate as `canActOnItem` below — see there for why.
  */
 export function canMarkBought(trip: Trip, userId: string): boolean {
+  if (trip.status === 'active') return true;
+  return trip.status === 'shopping' && trip.shopper_id === userId;
+}
+
+/**
+ * May this user SUBSTITUTE or mark NOT FOUND (ItemSheet's two extra shopping
+ * actions)? Deliberately narrower than `canMarkBought`: 0018 only opened up
+ * 'bought' outside shop mode (ticking off something you already have), not
+ * these two — "not found" or "substituted" presupposes someone's actually at
+ * the shop looking for it, which planning-mode ticking doesn't. Mirrors the
+ * items_update WITH CHECK's unchanged shopping-only branch (§7.2, 0013): the
+ * trip must be 'shopping' and the caller its shopper.
+ */
+export function canActOnItem(trip: Trip, userId: string): boolean {
   return trip.status === 'shopping' && trip.shopper_id === userId;
 }
 

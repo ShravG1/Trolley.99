@@ -151,14 +151,16 @@ export function Home() {
     else setEditItemId(item.id);
   };
 
-  // Marking bought is a shopping action the DB only allows the active shopper
-  // (RLS 0013). Offering it in List mode ticks optimistically, then the queued
-  // write is dropped as un-saveable and the reload rolls it back — the "swipe to
-  // buy just loops" bug. Gate the affordance to Shopping mode and nudge otherwise.
+  // Any member can mark an item bought before a shop starts (RLS 0013/0018);
+  // once one has, only the active shopper can, so we don't offer the tick to
+  // everyone else mid-shop — the DB would reject it, the queued write would get
+  // dropped as un-saveable, and the reload would roll it back ("swipe to buy just
+  // loops"). canMarkBought mirrors the DB rule; onBuyBlocked only fires for that
+  // remaining case (a non-shopper mid-shop).
   const canBuy = canMarkBought(trip, userId);
   const onBuyBlocked = () => {
     const { toasts, pushToast } = useStore.getState();
-    const msg = 'Start shopping first to tick things off.';
+    const msg = 'Only the active shopper can tick things off mid-shop.';
     // De-dupe: repeated swipes shouldn't stack identical nudges.
     if (!toasts.some((t) => t.message === msg)) pushToast(msg);
   };
