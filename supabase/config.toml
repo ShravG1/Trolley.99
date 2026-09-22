@@ -38,3 +38,9 @@ verify_jwt = false
 [functions.feedback-digest]
 # Same: scheduled-only, gated by the CRON_SECRET header rather than a JWT.
 verify_jwt = false
+
+[functions.quick-add]
+# Called from an iOS Shortcut (Siri), which has no Supabase session and so no
+# JWT to verify — auth here is the per-member quick-add token itself, checked
+# inside quick_add_item() by its hash (supabase/migrations/0019).
+verify_jwt = false

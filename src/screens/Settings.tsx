@@ -5,6 +5,7 @@ import { useStore } from '@/store/useStore';
 import { guessAisle } from '@/lib/categorise';
 import { enablePush, pushSupported, isInstalledPWA, isIOS } from '@/lib/push';
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { QuickAddSiri } from '@/components/QuickAddSiri';
 import {
   isSupabaseConfigured,
   createInvite,
@@ -177,6 +178,11 @@ export function Settings() {
           Routine bits that get added to the list on schedule — they land with an “Added on schedule” note.
         </p>
         <RecurringManager />
+      </Section>
+
+      {/* Add via Siri */}
+      <Section title="Add via Siri">
+        <QuickAddSiri />
       </Section>
 
       {/* Reporting gate */}

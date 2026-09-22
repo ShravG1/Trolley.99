@@ -237,6 +237,45 @@ export async function createInvite(
   return row ? { code: row.code as string, token: row.token as string } : null;
 }
 
+/** A member's own quick-add token ("add via Siri", §22) — the plaintext is
+ * never returned again after minting; this is what Settings lists/revokes. */
+export interface QuickAddTokenRow {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** This member's quick-add tokens for a group — self-scoped by RLS, so this
+ * never shows another member's Shortcut tokens even within the same group. */
+export async function listQuickAddTokens(groupId: string): Promise<QuickAddTokenRow[]> {
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from('quick_add_tokens')
+    .select('id, label, created_at, last_used_at')
+    .eq('group_id', groupId)
+    .order('created_at', { ascending: false });
+  return (data ?? []) as QuickAddTokenRow[];
+}
+
+/** Mint a fresh quick-add token (§22) — shown to the caller exactly ONCE; only
+ * its hash is ever stored (migration 0019). */
+export async function createQuickAddToken(groupId: string, label: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('create_quick_add_token', {
+    p_group_id: groupId,
+    p_label: label,
+  });
+  if (error) throw error;
+  return (data as string) ?? null;
+}
+
+/** Revoke one of MY OWN quick-add tokens (self-scoped delete, §22). */
+export async function revokeQuickAddToken(id: string): Promise<void> {
+  if (!supabase) return;
+  await supabase.from('quick_add_tokens').delete().eq('id', id);
+}
+
 /** The groups the signed-in user belongs to, with each group's name for the
  * multi-group switcher (§12). Oldest-first for a stable switcher order. */
 export async function listMyGroups(): Promise<MyGroup[]> {

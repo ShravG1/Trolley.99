@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
 import { DEFAULT_SHOP_LABEL } from '@/lib/activeShop';
 import { groupForList, groupForShopping, counts } from '@/lib/grouping';
@@ -62,6 +62,21 @@ export function Home() {
   const lifecycleBlocked = !online && remote != null;
 
   const [addOpen, setAddOpen] = useState(false);
+  // /add?item=<name> deep link (§22) — a manual/testing fallback for the same
+  // quick-add idea the Siri Shortcut uses, for whoever's already signed in on
+  // this device (e.g. a Spotlight/Shortcuts action that just opens a URL,
+  // no token needed). Opens the AddSheet prefilled, then strips the query so
+  // reloading/sharing the URL again doesn't reopen it.
+  const [deepLinkName, setDeepLinkName] = useState<string | undefined>(undefined);
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const item = new URLSearchParams(location.search).get('item');
+    if (!item?.trim()) return;
+    setDeepLinkName(item.trim());
+    setAddOpen(true);
+    navigate(location.pathname, { replace: true }); // strip ?item= so it can't reopen on reload
+  }, [location.search, location.pathname, navigate]);
   // Track the open sheets by item ID, never by the Item object. Holding the
   // object froze a snapshot taken when the sheet opened, so nothing you did
   // inside it appeared to work: tapping an aisle chip or the Urgent switch
@@ -336,7 +351,14 @@ export function Home() {
       </div>
 
       {/* Sheets */}
-      <AddSheet open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddSheet
+        open={addOpen}
+        onClose={() => {
+          setAddOpen(false);
+          setDeepLinkName(undefined);
+        }}
+        initialName={deepLinkName}
+      />
       <ItemSheet item={editItem} onClose={() => setEditItemId(null)} />
       <ItemMenuSheet
         item={menuItem}

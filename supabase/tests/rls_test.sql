@@ -11,7 +11,7 @@
 -- =============================================================================
 begin;
 create extension if not exists pgtap;
-select plan(55);
+select plan(64);
 
 -- --- Fixtures -------------------------------------------------------------
 -- Two users, two groups. We impersonate each by setting the JWT claims that
@@ -240,8 +240,77 @@ select throws_ok(
   '42501', NULL,
   '"not found" stays shopping-mode-only even after #18 — a member cannot use it while the trip is active');
 
+-- --- quick-add tokens: "add via Siri" (#22) -------------------------------
+-- sh_trip is still 'active' here (start_shopping hasn't run yet).
 select act_as('11111111-1111-1111-1111-111111111111');
+select lives_ok(
+  format($$ select create_quick_add_token(%L, 'Kitchen Shortcut') $$, :'gid_a'),
+  'a member can mint a quick-add token for their own group (#22)');
+
+-- A is not a member of group B — cannot mint a token for it.
+select throws_ok(
+  format($$ select create_quick_add_token(%L, 'Sneaky') $$, :'gid_b'),
+  'P0001', NULL,
+  'a non-member cannot mint a quick-add token for a group they are not in (#22)');
+
+-- Even within the SAME group, a token is visible only to the member who
+-- minted it — not to every group member (unlike invites, #37).
+select act_as('22222222-2222-2222-2222-222222222222');
+select is(
+  (select count(*) from quick_add_tokens where group_id = :'gid_a')::int, 0,
+  'a group-mate cannot see another member''s quick-add tokens (#22)');
+select act_as('11111111-1111-1111-1111-111111111111');
+
+-- The actual "Siri add" path: quick_add_item resolves the token and inserts a
+-- pending item onto the group's open Unsorted list.
+select create_quick_add_token(:'gid_a', 'pgTAP token') as qat \gset
+select is(
+  (select count(*) from quick_add_tokens where group_id = :'gid_a')::int, 2,
+  'the token is persisted, hashed (#22)');
+select isnt(
+  (select token_hash from quick_add_tokens where label = 'pgTAP token'),
+  :'qat',
+  'the stored token_hash is not the plaintext token (#22)');
+
+-- quick_add_item is granted to service_role ONLY (0019) — the edge function's
+-- caller, never a client holding just the anon/authenticated role directly.
+-- Impersonate that the way act_as() impersonates authenticated: flip the role
+-- GUC, call it, then flip back.
+select set_config('role', 'service_role', true);
+select quick_add_item(:'qat', 'Oat milk (via Siri)', 2);
+select act_as('11111111-1111-1111-1111-111111111111');
+select is(
+  (select count(*) from items i join trips t on t.id = i.trip_id
+    where t.id = :'sh_trip' and i.name = 'Oat milk (via Siri)'
+      and i.quantity = 2 and i.status = 'pending')::int, 1,
+  'quick_add_item inserts a pending item onto the group''s open list (#22)');
+
+-- Only service_role can call it at all — the same call as plain authenticated
+-- (A, however legitimately) is refused outright, before the token is even
+-- looked at. Table-level grants are the outer gate; the token is the inner one.
+select throws_ok(
+  format($$ select quick_add_item(%L, 'Should not land', 1) $$, :'qat'),
+  '42501', NULL,
+  'quick_add_item cannot be called directly by a signed-in member, only service_role (#22)');
+
+-- An invalid/garbage token is rejected outright.
+select set_config('role', 'service_role', true);
+select throws_ok(
+  $$ select quick_add_item('not-a-real-token', 'Should not land', 1) $$,
+  'P0001', NULL,
+  'quick_add_item rejects an unrecognised token (#22)');
+select act_as('11111111-1111-1111-1111-111111111111');
+
 select start_shopping(:'sh_trip', 0);  -- A is now the shopper
+
+-- Once the Unsorted list is being shopped, quick-add refuses rather than
+-- guessing where the item should land (it has no shopper/shop-tab context).
+select set_config('role', 'service_role', true);
+select throws_ok(
+  format($$ select quick_add_item(%L, 'Too late now', 1) $$, :'qat'),
+  'P0001', NULL,
+  'quick_add_item refuses while the group''s Unsorted list is being shopped (#22)');
+select act_as('11111111-1111-1111-1111-111111111111');
 
 -- (b) A non-shopper member (B) cannot mark an item bought server-side.
 select act_as('22222222-2222-2222-2222-222222222222');

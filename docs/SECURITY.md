@@ -75,6 +75,36 @@ The link token is 256 bits of the same CSPRNG.
 - Rate-limit code attempts per IP/user so the short code can't be brute-forced
   (platform rate limiting + the `code` uniqueness/entropy).
 
+## Quick-add tokens = a narrower, JWT-less credential (§22)
+
+"Add via Siri" (`docs/SIRI_SHORTCUTS.md`) needed a caller with no Supabase
+session at all — an iOS Shortcut can't hold one. That's a genuinely different
+trust model from everything else in this document, so it's deliberately kept
+as small as possible rather than folded into the normal RLS-gated surface:
+
+- A member mints their own token (`create_quick_add_token`, membership-checked,
+  same CSPRNG pattern as invite tokens above) from Settings. The **plaintext
+  is returned once and never stored** — only its sha256 hash is
+  (`quick_add_tokens.token_hash`), mirroring how you'd handle a PAT.
+- The token can do **exactly one thing**: `quick_add_item` inserts one pending
+  item on the token owner's group's open list. It cannot read the list,
+  enumerate members, or touch any other table or RPC.
+- `quick_add_item` is granted `EXECUTE` to `service_role` **only** — not
+  `authenticated`, not `anon`. A client holding just the anon key cannot call
+  it directly even with a stolen token; only the `quick-add` Edge Function
+  (which itself has no elevated access beyond forwarding the token) can. This
+  is enforced by a pgTAP assertion (`supabase/tests/rls_test.sql`, "#22"), not
+  just documented intent.
+- **Self-scoped, not group-scoped.** Unlike an invite (any member may revoke
+  a leaked one), a quick-add token is visible and revocable only by the
+  member who minted it (`quick_add_tokens_own`/`quick_add_tokens_self_delete`
+  RLS policies) — it's tied to one person's phone, not the household's
+  shared trust.
+- **Blast radius of a leaked token:** someone can add junk items to your
+  list. That's it — no read access, no other write, revocable any time from
+  Settings. Treated as low-severity by design, the same tier as "a
+  compromised member added something silly."
+
 ## Auth (§5.3)
 
 **Anonymous-first (the shipped model).** A shopping list is low-sensitivity, so the

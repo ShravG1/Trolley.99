@@ -10,6 +10,9 @@ import { getHotList, isSupabaseConfigured } from '@/lib/supabase';
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Prefill the name field when the sheet opens (the /add?item= deep link,
+   *  §22) — cleared like any other field once you start typing over it. */
+  initialName?: string;
 }
 
 // Starter suggestions, shown until the group's learned hot list (server-side,
@@ -20,7 +23,7 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
 // AddSheet (§2.4) — type-ahead chips, editable aisle tag (re-aisle is
 // MANDATORY), qty stepper, urgent toggle, multi-add tally.
-export function AddSheet({ open, onClose }: Props) {
+export function AddSheet({ open, onClose, initialName }: Props) {
   const addItem = useStore((s) => s.addItem);
   const learnCategory = useStore((s) => s.learnCategory);
   const categoryMemory = useStore((s) => s.categoryMemory);
@@ -47,6 +50,11 @@ export function AddSheet({ open, onClose }: Props) {
   useEffect(() => {
     if (open) setTargetShop(activeShopId);
   }, [open, activeShopId]);
+  // Deliberately keyed on `open` alone (not initialName) — only prefill on the
+  // open transition, so this can't stomp on what's been typed since.
+  useEffect(() => {
+    if (open && initialName) setName(initialName);
+  }, [open, initialName]);
   // Learned hot list (frequency-ranked from completed trips); falls back to the
   // starter list below until the group has shopping history (§2.4).
   const [hot, setHot] = useState<string[]>([]);

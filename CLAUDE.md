@@ -54,8 +54,10 @@ another's list). Touching the DB is security-critical; read before you change.
   **single most important suite** — `npm run test` (Vitest) never touches it. Any RLS
   or policy change must keep this green; add an assertion for what you changed.
 - **Edge functions** in `supabase/functions/` — `send-push` (web-push fan-out),
-  `recurring` (cron-driven recurring items), `feedback-digest` (cron-driven). They
-  run on Deno and are **deployed separately from Vercel** (`supabase functions deploy`).
+  `recurring` (cron-driven recurring items), `feedback-digest` (cron-driven),
+  `quick-add` (per-member bearer-token item add, for Siri Shortcuts — no
+  Supabase JWT involved; see `docs/SIRI_SHORTCUTS.md`). They run on Deno and
+  are **deployed separately from Vercel** (`supabase functions deploy`).
 - **`supabase/scheduled.sql`** wires pg_cron/pg_net to hit the two cron functions.
   It is **applied directly to the hosted project, NOT a migration** (it needs the live
   project URL + extensions and would break `supabase db reset`).

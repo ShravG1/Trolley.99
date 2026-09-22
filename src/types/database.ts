@@ -311,6 +311,44 @@ export type Database = {
         }
         Relationships: []
       }
+      quick_add_tokens: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          label: string
+          last_used_at: string | null
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quick_add_tokens_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recurring_items: {
         Row: {
           active: boolean
@@ -456,6 +494,10 @@ export type Database = {
           token: string
         }[]
       }
+      create_quick_add_token: {
+        Args: { p_group_id: string; p_label?: string }
+        Returns: string
+      }
       create_shop: {
         Args: { p_group_id: string; p_name: string }
         Returns: string
@@ -480,6 +522,14 @@ export type Database = {
       move_item_to_shop: {
         Args: { p_item_id: string; p_shop_id: string | null }
         Returns: undefined
+      }
+      quick_add_item: {
+        Args: { p_name: string; p_quantity?: number; p_token: string }
+        Returns: {
+          group_name: string
+          item_id: string
+          item_name: string
+        }[]
       }
       rename_member: {
         Args: { p_display_name: string; p_group_id: string }
